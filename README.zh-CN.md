@@ -133,19 +133,6 @@ print(observation.evidence) # 来源 + 定位 + 取值 + 置信度
 
 `get_registry()` 与 `run_tool()` 是稳定的公开集成入口。调用方无需为了注册副作用而导入各原语模块。
 
-## WorkBuddy 技能（Skill）
-
-dftk 附带一个开箱即用的 [WorkBuddy 技能](skills/dftk/SKILL.md)，让智能体能在对话中直接发现并驱动本工具集。将其目录复制到技能目录即可安装：
-
-```bash
-# 用户级
-cp -r skills/dftk ~/.workbuddy/skills/dftk
-# 或项目级（与团队共享）
-cp -r skills/dftk .workbuddy/skills/dftk
-```
-
-加载后，智能体即可通过 CLI 执行 `list` / `describe` / `run` / `recipe`，并解读结构化的 `Observation` 输出。该技能固化了经过验证的调用方式（`PYTHONPATH=src python -m dftk.cli …`）、安全模型（默认 READ_ONLY、网络受控）与结果契约，使取证在结构上保持证据保全。
-
 ## Observation 结果契约
 
 每个工具都返回一个结构化的 `Observation`，具有明确的执行状态：

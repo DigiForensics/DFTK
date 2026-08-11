@@ -133,19 +133,6 @@ print(observation.evidence) # source + locator + value + confidence
 
 `get_registry()` and `run_tool()` are the stable public integration entry points. Callers do not need to import primitive modules for registration side effects.
 
-## WorkBuddy Skill
-
-dftk ships a ready-to-use [WorkBuddy skill](skills/dftk/SKILL.md) that lets an agent discover and drive the toolkit from a conversation. Install it by copying the folder into a skills directory:
-
-```bash
-# user-wide
-cp -r skills/dftk ~/.workbuddy/skills/dftk
-# or project-wide (shared with the team)
-cp -r skills/dftk .workbuddy/skills/dftk
-```
-
-Once loaded, the agent can `list`/`describe`/`run`/`recipe` tools via the CLI and interpret the structured `Observation` output. The skill pins the verified invocation (`PYTHONPATH=src python -m dftk.cli …`), the safety model (READ_ONLY by default, network gated), and the observation contract, so forensics stay evidence-preserving by construction.
-
 ## Observation contract
 
 Every tool returns one structured `Observation` with distinct execution states:
