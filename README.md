@@ -22,7 +22,7 @@ DFTK is a **capability layer**, not an autonomous forensic agent. It exposes sta
 
 - **Evidence-first.** Reads are read-only by default; nothing mutates source evidence unless you explicitly raise the safety ceiling.
 - **Zero mandatory dependencies.** The base package installs cleanly anywhere with no third-party runtime requirements. Specialist parsers (E01/TSK, Windows Registry/EVTX, DKIM/SPF, SSH) are optional extras and report `unsupported` when absent rather than silently guessing.
-- **Agent-ready.** A single registry of 66 tools with JSON contracts, semantic tags, declared safety level, network gating, and produced-evidence types — designed for planners to select tools from an evidence requirement.
+- **Agent-ready.** A single registry of 68 tools with JSON contracts, semantic tags, declared safety level, network gating, and produced-evidence types — designed for planners to select tools from an evidence requirement.
 - **Safe by construction.** `READ_ONLY < STATEFUL < DESTRUCTIVE`; no registered tool is `DESTRUCTIVE`. Network traffic is independently gated behind an explicit opt-in.
 
 ## Contents
@@ -114,6 +114,14 @@ Export the full tool manifest (agent-readable):
 dftk export-manifest --out manifest.json
 ```
 
+Build an investigation case and correlate its runs into one timeline:
+
+```bash
+dftk case new --name intake
+dftk case run <case_id> timeline.file_metadata --params '{"root":"mnt/evidence"}'
+dftk case timeline <case_id>
+```
+
 ## Python / Agent API
 
 ```python
@@ -150,7 +158,7 @@ meta         tool and run metadata
 
 ## Capability model
 
-DFTK 2.1.0 contains a registry of **66 tools** (65 `READ_ONLY`, 1 `STATEFUL`) and **13 recipes** spanning:
+DFTK 3.0.0 contains a registry of **68 tools** (67 `READ_ONLY`, 1 `STATEFUL`) and **14 recipes** spanning:
 
 - artifact identification, hashing, strings, search and timeline;
 - APK, DEX, binary AXML, Android app data and endpoint extraction;
@@ -165,6 +173,21 @@ DFTK 2.1.0 contains a registry of **66 tools** (65 `READ_ONLY`, 1 `STATEFUL`) an
 - Chromium / Edge and Firefox artifacts;
 - MIME / email authentication analysis;
 - BIP39, entropy and reversible encoding helpers.
+- Unified timeline correlation and investigation case sessions: merge event sources into one source-attributed timeline, and accumulate tool runs in an isolated `dftk case` workspace.
+
+### Case correlation & unified timeline
+
+`timeline.merge` normalizes and correlates time-bearing events from multiple dftk tool outputs (or inline sources) into one sorted, source-attributed timeline — useful for fusing filesystem metadata, authentication logs and browser history.
+
+`dftk case` wraps the read-only tools into an isolated investigation session. It records each run's `Observation` under a workspace (`.dftk/cases/<id>/`) and can correlate them into a single timeline or export a report:
+
+```bash
+dftk case new --name phishing-intake
+dftk case run <case_id> timeline.file_metadata --params '{"root":"mnt/phone"}'
+dftk case run <case_id> linux.auth_events      --params '{"root":"mnt/server"}'
+dftk case timeline <case_id>     # unified, source-attributed timeline
+dftk case export <case_id> --format md
+```
 
 See [`CAPABILITIES.md`](CAPABILITIES.md) for the detailed map.
 
@@ -176,7 +199,7 @@ DFTK separates execution safety from forensic reasoning:
 |-------|----------|
 | `READ_ONLY` | reads evidence or immutable / read-only views |
 | `STATEFUL` | may write derived workspace output without changing source evidence |
-| `DESTRUCTIVE` | reserved for target-modifying actions; **not registered** in 2.1.0 |
+| `DESTRUCTIVE` | reserved for target-modifying actions; **not registered** in 3.0.0 |
 
 The default policy allows only `READ_ONLY` operations. Network access is independently gated and must be enabled with `--allow-network`. Controlled archive extraction (`archive.extract_safe`) is `STATEFUL` and blocked unless the caller explicitly raises the ceiling:
 

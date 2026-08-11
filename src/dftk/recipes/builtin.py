@@ -1,3 +1,17 @@
+# Copyright 2026 DyNooob @ DigiForensics
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Status,SafetyLevel
@@ -142,3 +156,15 @@ def android_appdata_triage(root:str,database_limit:int=20)->Observation:
 def email_full_offline_triage(path:str)->Observation:
     p=SafetyPolicy(); children=[registry.run('email.mime_inventory',{'path':path},p),registry.run('email.auth_analyze',{'path':path},p)]
     return aggregate('recipe.email.full_offline_triage',children,'Email offline triage complete')
+
+@registry.tool(name='recipe.timeline.unified',description='Build a unified, source-attributed timeline from a filesystem evidence tree and optional extra dftk Observation sources.',
+ safety=SafetyLevel.READ_ONLY,tags=('recipe','timeline','correlation'),produces=('timeline',),cost_hint='medium',
+ parameters={'type':'object','properties':{'root':{'type':'string'},'extra_sources':{'type':'array','items':{'type':'string'},'description':'Optional paths to dftk Observation JSON files to merge in'},'limit':{'type':'integer','default':200000}},'required':['root']})
+def unified_timeline(root:str,extra_sources:list[str]|None=None,limit:int=200000)->Observation:
+    p=SafetyPolicy()
+    fs=registry.run('timeline.file_metadata',{'root':root,'limit':limit},p)
+    sources=[{'source':'filesystem','events':fs.facts.get('events',[])}]
+    for f in (extra_sources or []):
+        sources.append({'file':f})
+    merged=registry.run('timeline.merge',{'inline':sources,'limit':limit},p)
+    return aggregate('recipe.timeline.unified',[fs,merged],'Unified timeline built')

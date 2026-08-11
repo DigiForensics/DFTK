@@ -2,6 +2,15 @@
 
 All notable public changes to DFTK are recorded here.
 
+## 3.0.0 — Unified timeline & case correlation
+
+- Added unified timeline correlation: `timeline.merge` normalizes and merges time-bearing events from multiple dftk tool outputs or inline sources into one source-attributed, sorted timeline.
+- Added investigation case sessions via the `dftk case` CLI (and `dftk.core.case` API): `new`, `list`, `run`, `timeline`, and `export` (JSON/Markdown). A case accumulates read-only tool runs in an isolated `.dftk/cases/<id>/` workspace and correlates them into a single timeline without ever mutating evidence.
+- Added `recipe.timeline.unified` composing a filesystem metadata timeline with optional extra Observation sources.
+- Added Apache-2.0 copyright headers to all source and test files.
+- Registry now exposes 68 tools (67 READ_ONLY, 1 STATEFUL) and 14 recipes.
+- No breaking changes to the existing Observation/Evidence contract or the public Python API (`get_registry`, `run_tool`).
+
 ## 2.1.0 — Public release candidate
 
 - Renamed the PyPI distribution from `digital-forensics-toolkit` to `dftk`.

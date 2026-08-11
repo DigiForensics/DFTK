@@ -1,6 +1,6 @@
-# Capability map — DFTK 2.1
+# Capability map — DFTK 3.0
 
-The registry contains 66 tools. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
+The registry contains 68 tools (67 READ_ONLY, 1 STATEFUL). Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
 
 ## Artifact and filesystem
 
@@ -13,6 +13,7 @@ The registry contains 66 tools. Most capabilities are deliberately narrow so an 
 - `timeline.file_metadata` — filesystem mtime/ctime/atime timeline.
 - `archive.inventory` — ZIP/TAR member metadata without extraction.
 - `archive.extract_safe` — policy-gated workspace extraction with traversal/size guards.
+- `timeline.merge` — merge multiple event sources (dftk Observation JSON files or inline events) into one normalized, source-attributed timeline.
 
 ## Android
 
@@ -90,6 +91,12 @@ Optional forensic-environment capabilities:
 - MIME structure and attachment SHA-256 inventory.
 - network-gated DKIM verification and SPF evaluation.
 
+## Timeline correlation and case sessions
+
+- `timeline.merge` — pure correlation primitive: normalize ISO/epoch timestamps, sort, and attribute events to their source across multiple inputs.
+- `recipe.timeline.unified` — compose a filesystem metadata timeline (and optional extra sources) into one unified timeline.
+- `dftk case` CLI — accumulate read-only tool runs in an isolated workspace (`.dftk/cases/<id>/`) and correlate them: `case new`, `case list`, `case run`, `case timeline`, `case export` (JSON or Markdown). The session only writes under its explicit workspace and never touches source evidence.
+
 ## Recipes
 
 - `recipe.artifact.auto_triage`
@@ -105,3 +112,4 @@ Optional forensic-environment capabilities:
 - `recipe.email.offline_triage`
 - `recipe.email.full_offline_triage`
 - `recipe.wallet.mnemonic_scan`
+- `recipe.timeline.unified` — build a unified, source-attributed timeline from a filesystem tree plus optional extra dftk Observation sources.

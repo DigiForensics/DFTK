@@ -1,7 +1,7 @@
 ---
 name: dftk
-description: Evidence-preserving digital forensics (DFIR) toolkit for agents. 66 read-only/stateful tools across Android, Linux, Windows, network, email, and crypto, behind a safety-gated Observation/Evidence contract. Use when an agent must collect, hash, parse, or analyze forensic artifacts without mutating evidence.
-version: 2.1.0
+description: Evidence-preserving digital forensics (DFIR) toolkit for agents. 68 read-only/stateful tools plus a unified-timeline and case-correlation workflow across Android, Linux, Windows, network, email, and crypto, behind a safety-gated Observation/Evidence contract. Use when an agent must collect, hash, parse, analyze, or correlate forensic artifacts without mutating evidence.
+version: 3.0.0
 author: DyNooob @ DigiForensics
 license: Apache-2.0
 tags:
@@ -63,6 +63,11 @@ Two modes; prefer the CLI for isolation.
 - `dftk describe <tool>` — show the parameter JSON schema
 - `dftk run <tool> --params '{"path":"..."}'` — execute
 - `dftk export-manifest` — dump the full tool catalog as JSON (hand this to a planner)
+- `dftk run timeline.merge --params '{"files":[...],"inline":[...]}'` — merge event sources into one normalized, source-attributed timeline
+- `dftk case new --name <name>` / `dftk case list` — create/list investigation cases
+- `dftk case run <case_id> <tool> --params '{...}'` — run a tool and record its Observation in the case
+- `dftk case timeline <case_id>` — merge all recorded Observations into one timeline
+- `dftk case export <case_id> [--format json|md]` — export a case report
 - Network-accessing tools require `--allow-network`; anything above READ_ONLY
   requires `--max-safety STATEFUL`.
 
@@ -100,7 +105,8 @@ tools return `unsupported` rather than guess.
 
 ## Coverage (categories, not exhaustive)
 file, archive, hash, timeline, android, linux, windows (registry, evtx),
-network, email (dkim, spf), crypto, database, ssh — 66 tools + 13 recipes.
+network, email (dkim, spf), crypto, database, ssh, and timeline correlation —
+68 tools + 14 recipes.
 
 ## Copyright
 Copyright 2026 DyNooob @ DigiForensics. Released under the Apache License 2.0.

@@ -22,7 +22,7 @@ DFTK 是一个**能力层（capability layer）**，而不是一个自主取证�
 
 - **以证据为先。** 默认只读；除非你显式提升安全级别，否则任何操作都不会修改原始证据。
 - **零强制依赖。** 基础包可在任何环境干净安装，无需任何第三方运行依赖。专业解析器（E01/TSK、Windows 注册表/EVTX、DKIM/SPF、SSH）为可选扩展；缺失时返回 `unsupported`，而非静默猜测。
-- **面向智能体。** 统一的 66 个工具注册表，带有 JSON 契约、语义标签、声明的安全级别、网络开关，以及所产出证据的类型——便于规划器根据证据需求选择工具。
+- **面向智能体。** 统一的 68 个工具注册表，带有 JSON 契约、语义标签、声明的安全级别、网络开关，以及所产出证据的类型——便于规划器根据证据需求选择工具。
 - **默认安全。** `READ_ONLY < STATEFUL < DESTRUCTIVE`；所有注册工具中没有任何一个是 `DESTRUCTIVE`。网络流量需显式开启，独立受控。
 
 ## 目录
@@ -114,6 +114,14 @@ dftk recipe artifact.auto_triage --params '{"path":"unknown.bin"}'
 dftk export-manifest --out manifest.json
 ```
 
+建立一个调查案例，并将其各次运行关联为一条统一时间线：
+
+```bash
+dftk case new --name intake
+dftk case run <case_id> timeline.file_metadata --params '{"root":"mnt/evidence"}'
+dftk case timeline <case_id>
+```
+
 ## Python / 智能体 API
 
 ```python
@@ -150,7 +158,7 @@ meta         工具与运行元数据
 
 ## 能力模型
 
-DFTK 2.1.0 包含 **66 个工具**（65 个 `READ_ONLY`、1 个 `STATEFUL`）和 **13 个配方**，覆盖：
+DFTK 3.0.0 包含 **68 个工具**（67 个 `READ_ONLY`、1 个 `STATEFUL`）和 **14 个配方**，覆盖：
 
 - 取证对象识别、哈希、字符串、搜索与时间线；
 - APK、DEX、二进制 AXML、Android 应用数据与端点提取；
@@ -165,6 +173,21 @@ DFTK 2.1.0 包含 **66 个工具**（65 个 `READ_ONLY`、1 个 `STATEFUL`）和
 - Chromium / Edge 与 Firefox 痕迹；
 - MIME / 邮件认证分析；
 - BIP39、熵分析与可逆编码辅助。
+- 统一时间线关联与调查案例会话：将多个事件源合并为按来源归类的统一时间线，并在隔离的 `dftk case` 工作区中累积工具运行。
+
+### 案例关联与统一时间线
+
+`timeline.merge` 将来自多个 dftk 工具输出（或内联来源）的时间相关事件归一化并关联为一条已排序、按来源归类的时间线——适用于融合文件系统元数据、认证日志与浏览器历史。
+
+`dftk case` 将只读工具封装为隔离的调查会话。它在工作区（`.dftk/cases/<id>/`）下记录每次运行的 `Observation`，并可将其关联为单一时间线或导出报告：
+
+```bash
+dftk case new --name phishing-intake
+dftk case run <case_id> timeline.file_metadata --params '{"root":"mnt/phone"}'
+dftk case run <case_id> linux.auth_events      --params '{"root":"mnt/server"}'
+dftk case timeline <case_id>     # 统一、按来源归类的时间线
+dftk case export <case_id> --format md
+```
 
 详细能力地图见 [`CAPABILITIES.md`](CAPABILITIES.md)。
 
@@ -176,7 +199,7 @@ DFTK 将“执行安全”与“取证推理”分离：
 |------|------|
 | `READ_ONLY` | 读取证据或不可变 / 只读视图 |
 | `STATEFUL` | 可写入派生的临时工作区，但不修改原始证据 |
-| `DESTRUCTIVE` | 保留给会修改目标的操作；**2.1.0 中未注册任何此类工具** |
+| `DESTRUCTIVE` | 保留给会修改目标的操作；**3.0.0 中未注册任何此类工具** |
 
 默认策略只允许 `READ_ONLY` 操作。网络访问独立受控，必须通过 `--allow-network` 显式开启。受控的归档解压（`archive.extract_safe`）为 `STATEFUL`，除非调用方显式提升安全上限，否则会被拦截：
 

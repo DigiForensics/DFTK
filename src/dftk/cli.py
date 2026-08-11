@@ -1,3 +1,17 @@
+# Copyright 2026 DyNooob @ DigiForensics
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 import argparse,json
 from pathlib import Path
@@ -12,7 +26,7 @@ try:
 except Exception:
     _SKILL_FILE = None
 
-TOOLKIT_VERSION = "2.1.0"
+TOOLKIT_VERSION = "3.0.0"
 
 def _load_params(args):
     if getattr(args,'params_file',None): return json.loads(Path(args.params_file).read_text(encoding='utf-8'))
@@ -96,6 +110,42 @@ def _cmd_skill(args):
     print(f"\nInstalled dftk skill for {len(installed)} agent target(s): {', '.join(targets)}")
     return 0
 
+def _cmd_case(args):
+    from .core.case import CaseSession, CaseError
+    sess = CaseSession(getattr(args, "workspace", ".dftk") or ".dftk")
+    cmd = getattr(args, "case_cmd", None)
+    if cmd == "new":
+        _emit(sess.new(args.name)); return 0
+    if cmd == "list":
+        _emit(sess.list()); return 0
+    if cmd == "run":
+        try:
+            params = _load_params(args)
+        except Exception as e:
+            _emit({"error": f"invalid params JSON: {e}"}); return 2
+        obs = sess.run(args.case_id, args.tool, params,
+                       allow_network=args.allow_network, max_safety=args.max_safety)
+        _emit(obs.to_dict())
+        return 0 if obs.status.value in ("ok", "partial", "unsupported") else 1
+    if cmd == "timeline":
+        try:
+            obs = sess.timeline(args.case_id)
+        except CaseError as e:
+            _emit({"error": str(e)}); return 2
+        _emit(obs.to_dict(), args.out); return 0
+    if cmd == "export":
+        try:
+            text = sess.export(args.case_id, fmt=args.format)
+        except CaseError as e:
+            _emit({"error": str(e)}); return 2
+        if args.out:
+            Path(args.out).write_text(text, encoding="utf-8")
+            print(f"exported -> {args.out}")
+        else:
+            print(text)
+        return 0
+    _emit({"error": "unknown case subcommand"}); return 2
+
 def main(argv=None):
     load_builtin_tools()
     ap=argparse.ArgumentParser(prog='dftk')
@@ -110,8 +160,17 @@ def main(argv=None):
     sk.add_argument('--install',action='store_true',help='install the skill into agent skill directories')
     sk.add_argument('--target',default='all',metavar='LIST',help='comma-separated agent targets or "all" (options: workbuddy,claude,codex,hermes,agents,cursor,gemini)')
     sk.add_argument('--dir',metavar='DIR',help='install into a custom directory instead of known agent targets')
+    cs=sub.add_parser('case',help='build and correlate an investigation case / unified timeline')
+    cs.add_argument('--workspace',default='.dftk',metavar='DIR',help='case workspace root (default: .dftk)')
+    cs_sub=cs.add_subparsers(dest='case_cmd',required=True)
+    cs_new=cs_sub.add_parser('new',help='create a new case and print its manifest'); cs_new.add_argument('--name')
+    cs_list=cs_sub.add_parser('list',help='list cases in the workspace')
+    cs_run=cs_sub.add_parser('run',help='run a tool and record its Observation in the case'); cs_run.add_argument('case_id'); cs_run.add_argument('tool'); cs_run.add_argument('--params'); cs_run.add_argument('--params-file'); cs_run.add_argument('--allow-network',action='store_true'); cs_run.add_argument('--max-safety',choices=['READ_ONLY','STATEFUL','DESTRUCTIVE'],default='READ_ONLY')
+    cs_tl=cs_sub.add_parser('timeline',help='merge all recorded Observations into one timeline'); cs_tl.add_argument('case_id'); cs_tl.add_argument('--out')
+    cs_exp=cs_sub.add_parser('export',help='export a case report (json or markdown)'); cs_exp.add_argument('case_id'); cs_exp.add_argument('--format',choices=['json','md'],default='json'); cs_exp.add_argument('--out')
     args=ap.parse_args(argv)
     if args.cmd=='skill': return _cmd_skill(args)
+    if args.cmd=='case': return _cmd_case(args)
     if args.cmd=='list':
         _emit([_spec_dict(s) for s in registry.find(tags=args.tag,produces=args.produces)]); return 0
     if args.cmd=='describe':
