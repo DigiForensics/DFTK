@@ -32,23 +32,68 @@ def _spec_dict(s):
         "deterministic":s.deterministic,"cost_hint":s.cost_hint,
     }
 
+# Known agent skill directories (user-level). Every entry follows the same
+# SKILL.md-in-<slug>/ convention, so one bundled SKILL.md serves them all.
+# `agents` is the Anthropic Agent Skills open standard (~/.agents/skills) shared
+# by Codex, Cursor, Gemini CLI, GitHub Copilot and 70+ others.
+AGENT_SKILL_DIRS = {
+    "workbuddy": ".workbuddy/skills",
+    "claude":    ".claude/skills",
+    "codex":     ".codex/skills",
+    "hermes":    ".hermes/skills",
+    "agents":    ".agents/skills",
+    "cursor":    ".cursor/skills",
+    "gemini":    ".gemini/skills",
+}
+
+def _resolve_targets(spec):
+    if spec is None or spec.strip().lower() == "all":
+        return list(AGENT_SKILL_DIRS.keys())
+    out=[]
+    for t in spec.split(","):
+        t=t.strip().lower()
+        if not t: continue
+        if t not in AGENT_SKILL_DIRS:
+            raise ValueError(f"unknown agent target: {t!r} (known: {', '.join(AGENT_SKILL_DIRS)})")
+        out.append(t)
+    return out
+
 def _cmd_skill(args):
     if _SKILL_FILE is None:
         _emit({"error":"SKILL.md not bundled in this install"}); return 2
-    if getattr(args,'install',None) is None:
+    if not getattr(args,'install',False):
         print(str(_SKILL_FILE)); return 0
     import shutil
-    dest = args.install
-    if dest is True:
-        dest = Path.home() / ".workbuddy" / "skills" / "dftk"
-    else:
-        dest = Path(dest)
+    # Custom directory mode (overrides agent targets).
+    custom = getattr(args,'dir',None)
+    if custom:
+        dest = Path(custom)
         if dest.name != "dftk":
             dest = dest / "dftk"
-    dest.mkdir(parents=True, exist_ok=True)
-    target = dest / "SKILL.md"
-    shutil.copyfile(str(_SKILL_FILE), target)
-    print(f"installed skill -> {target}")
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(str(_SKILL_FILE), dest / "SKILL.md")
+        print(f"installed skill -> {dest / 'SKILL.md'}")
+        return 0
+    # Multi-agent install mode.
+    try:
+        targets = _resolve_targets(args.target)
+    except ValueError as e:
+        _emit({"error":str(e)}); return 2
+    home = Path.home()
+    installed=[]
+    for t in targets:
+        dest = home / AGENT_SKILL_DIRS[t] / "dftk"
+        try:
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(str(_SKILL_FILE), dest / "SKILL.md")
+            installed.append(str(dest / "SKILL.md"))
+        except OSError as e:
+            print(f"  skipped {t}: {e}")
+    for p in installed:
+        print(f"installed -> {p}")
+    if not installed:
+        _emit({"error":"no skill directories could be written"}); return 1
+    print(f"\nInstalled dftk skill for {len(installed)} agent target(s): {', '.join(targets)}")
     return 0
 
 def main(argv=None):
@@ -62,7 +107,9 @@ def main(argv=None):
     rec=sub.add_parser('recipe'); rec.add_argument('name'); rec.add_argument('--params'); rec.add_argument('--params-file'); rec.add_argument('--out')
     ex=sub.add_parser('export-manifest'); ex.add_argument('--out')
     sk=sub.add_parser('skill',help='show/install the bundled agent skill (SKILL.md)')
-    sk.add_argument('--install',nargs='?',const=True,default=None,metavar='DIR',help='copy SKILL.md into an agent skills dir (default: ~/.workbuddy/skills/dftk)')
+    sk.add_argument('--install',action='store_true',help='install the skill into agent skill directories')
+    sk.add_argument('--target',default='all',metavar='LIST',help='comma-separated agent targets or "all" (options: workbuddy,claude,codex,hermes,agents,cursor,gemini)')
+    sk.add_argument('--dir',metavar='DIR',help='install into a custom directory instead of known agent targets')
     args=ap.parse_args(argv)
     if args.cmd=='skill': return _cmd_skill(args)
     if args.cmd=='list':

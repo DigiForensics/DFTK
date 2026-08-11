@@ -27,14 +27,26 @@ skill). The dftk *code* it wraps lives on PyPI.
 
 ## Install
 
-Pick either way to make this skill available to an agent:
+The skill is a single `SKILL.md` that every major agent loads the same way
+(folder per skill, `SKILL.md` inside), so one file serves them all. Make it
+available to an agent by any of:
 
 1. **Standalone (skill only, no pip needed for the skill itself):** copy this
-   folder into your agent's skills directory, e.g.
-   `~/.workbuddy/skills/dftk/`. (Or publish it to a skill marketplace as-is.)
-2. **Via the dftk library:** `pip install dftk`, then
-   `dftk skill --install` copies this same file into
-   `~/.workbuddy/skills/dftk/`.
+   folder into the agent's skills directory. Known locations:
+   - WorkBuddy: `~/.workbuddy/skills/dftk/`
+   - Claude Code: `~/.claude/skills/dftk/`
+   - OpenAI Codex: `~/.codex/skills/dftk/`
+   - Hermes: `~/.hermes/skills/dftk/`
+   - Agent Skills open standard (Codex, Cursor, Gemini CLI, GitHub Copilot, 70+):
+     `~/.agents/skills/dftk/`
+2. **Via the dftk library (registers everywhere at once):** `pip install dftk`,
+   then:
+   - `dftk skill --install` → copies `SKILL.md` into **all** known agent dirs
+     above in one go.
+   - `dftk skill --install --target claude,codex,hermes` → only the agents you
+     name (options: `workbuddy,claude,codex,hermes,agents,cursor,gemini`, or
+     `all`).
+   - `dftk skill --install --dir /path/to/skills/dftk` → a custom directory.
 
 Either way, the dftk **code** must be installed for the tools to actually run:
 `pip install dftk` (optionally `pip install "dftk[all]"` for the expert
