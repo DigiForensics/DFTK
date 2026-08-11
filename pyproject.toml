@@ -62,4 +62,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-dftk = ["data/*.txt"]
+dftk = ["SKILL.md", "data/*.txt"]
