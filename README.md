@@ -229,7 +229,7 @@ Please report vulnerabilities privately — do **not** open a public issue. See 
 
 ## License
 
-Released under the [Apache License 2.0](LICENSE). Copyright 2026 DyNooob.
+Released under the [Apache License 2.0](LICENSE). Copyright 2026 DyNooob @ DigiForensics.
 
 ## Disclaimer
 

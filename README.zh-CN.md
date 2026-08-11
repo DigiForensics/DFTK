@@ -229,7 +229,7 @@ python -m twine check --strict dist/*
 
 ## 许可证
 
-基于 [Apache License 2.0](LICENSE) 发布。Copyright 2026 DyNooob。
+基于 [Apache License 2.0](LICENSE) 发布。Copyright 2026 DyNooob @ DigiForensics。
 
 ## 免责声明
 
