@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dftk"
+version = "2.1.0"
+description = "Evidence-preserving digital forensics primitives and composable workflows for analysts, automation systems, and autonomous agents"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "DyNooob", email = "i@digiforensics.cn"}]
+maintainers = [{name = "DyNooob", email = "i@digiforensics.cn"}]
+license = "Apache-2.0"
+keywords = [
+  "digital-forensics",
+  "forensics",
+  "dfir",
+  "incident-response",
+  "android-forensics",
+  "network-forensics",
+  "windows-forensics",
+  "linux-forensics",
+  "agent-tools",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+  "License :: OSI Approved :: Apache Software License",
+]
+dependencies = []
+
+[project.optional-dependencies]
+email = ["dkimpy>=1.1", "dnspython>=2.4", "pyspf>=2.0"]
+ssh = ["paramiko>=3.4"]
+windows = ["python-registry>=1.3", "python-evtx>=0.8"]
+all = ["dkimpy>=1.1", "dnspython>=2.4", "pyspf>=2.0", "paramiko>=3.4", "python-registry>=1.3", "python-evtx>=0.8"]
+dev = ["pytest>=8", "build>=1.2", "twine>=5"]
+
+[project.urls]
+Homepage = "https://www.digiforensics.cn"
+Documentation = "https://www.digiforensics.cn"
+DigiForensics = "https://www.digiforensics.cn"
+LLMCN = "https://www.llmcn.org"
+Source = "https://github.com/DigiForensics/DFTK"
+Issues = "https://github.com/DigiForensics/DFTK/issues"
+
+[project.scripts]
+dftk = "dftk.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+dftk = ["data/*.txt"]
