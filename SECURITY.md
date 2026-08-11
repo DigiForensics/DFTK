@@ -1,35 +1,47 @@
-# Safety policy
+# Security policy
 
-The default execution policy is evidence-preserving and offline.
+## Reporting a vulnerability
 
-## Levels
+**Please do not report security vulnerabilities through public GitHub issues.**
 
-- `READ_ONLY` — reads evidence, metadata or immutable/read-only database connections; fixed remote inventory also belongs here but is separately network-gated.
-- `STATEFUL` — writes only to a derived workspace or otherwise changes runtime state without modifying the source evidence.
-- `DESTRUCTIVE` — writes/deletes target evidence, rewrites configuration, stops/starts services, installs software, pulls/runs containers or exposes arbitrary target-shell mutation.
+If you discover a security vulnerability in DFTK, please report it privately to
+the maintainers. We will acknowledge receipt and work with you on a
+coordinated disclosure.
 
-DFTK 2.1 registers **65 READ_ONLY**, **1 STATEFUL** and **0 DESTRUCTIVE** tools.
+- **Security contact:** i@digiforensics.cn
+- **Subject line:** `DFTK security vulnerability — <short summary>`
 
-The one stateful tool, `archive.extract_safe`, writes to an explicit output directory and is blocked under the default policy. It applies path-traversal, member-count and expanded-size checks and does not modify the source archive.
+Include as much of the following as possible:
 
-## Network isolation
+- a description of the vulnerability and its impact;
+- steps to reproduce or a proof of concept;
+- affected versions (e.g. `2.1.0`);
+- any suggested mitigation, if known.
 
-Network-capable tools are disabled unless the caller opts in with `--allow-network`. This prevents an offline run from unexpectedly performing DNS or SSH traffic.
+You can expect an initial acknowledgement within a few business days. Once the
+issue is confirmed, we will agree on a disclosure timeline that balances user
+safety with responsible publication.
 
-Current network-gated capabilities are DKIM verification, SPF evaluation and fixed-command SSH inventory. SSH does not expose an arbitrary command parameter and rejects unknown host keys.
+## Supported versions
 
-## Databases
+Only the latest published release line receives security fixes.
 
-SQLite forensic access uses URI `mode=ro&immutable=1` plus `PRAGMA query_only=ON`. `database.sqlite_query` adds a SQLite authorizer and only accepts a single `SELECT`/`WITH` statement; write/DDL operations are denied by the engine even if a query attempts to hide them behind SQL syntax.
+| Version | Supported |
+|---------|-----------|
+| 2.1.x   | ✅ Yes |
+| < 2.1   | ❌ No |
 
-## Archives
+## Scope notes
 
-Archive inventory never extracts. Controlled extraction is `STATEFUL` and rejects members that resolve outside the selected output directory. TAR links/special members are not materialized by default.
+DFTK is a **read-only, evidence-preserving** toolkit by design:
 
-## Specialist parsers
+- no registered tool is `DESTRUCTIVE`;
+- network access is gated behind `--allow-network`;
+- SQLite access is read-only (`mode=ro&immutable=1`, `query_only=ON`);
+- archive extraction is `STATEFUL` and rejects path-traversal / oversized members.
 
-When `python-registry`, `python-evtx`, `pyewf`, `pytsk3`, `dkimpy`, `pyspf` or `paramiko` are absent, the matching capability returns `UNSUPPORTED` rather than silently pretending a weaker parser is equivalent.
+Reports about deviations from this model (e.g. a tool that unexpectedly writes
+to or modifies source evidence, or performs network traffic without the
+explicit opt-in) are in scope and prioritized.
 
-## Legacy scripts
-
-The original competition archive is retained only for provenance and knowledge mining. It is not imported by the registry. Historical scripts that contain credentials, target addresses, fixed challenge entities or state-changing commands must not be exposed to an autonomous Agent.
+For the full safety model, see [SAFETY.md](SAFETY.md).

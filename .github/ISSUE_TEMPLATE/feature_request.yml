@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest a new capability or improvement for DFTK
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What forensic task are you trying to accomplish that DFTK does not currently support well?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability
+      description: Describe the tool or recipe you'd like. Include the evidence domain (Android, network, Windows, etc.) if known.
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Suggested contract (optional)
+      description: Rough idea of inputs, safety level, network needs, and produced evidence types.
+      render: text
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: References, sample artifacts (redacted), or links that help us understand the request.

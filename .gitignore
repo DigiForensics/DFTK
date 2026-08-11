@@ -1,11 +1,34 @@
+# Virtual environments
 .venv/
 venv/
+env/
+.env
+
+# Build artifacts
 build/
 dist/
 *.egg-info/
-.pytest_cache/
+*.egg
+
+# Python caches
 __pycache__/
 *.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.tox/
+
+# Test / coverage
 .coverage
+coverage.xml
 htmlcov/
+
+# Editor / OS
+.idea/
+.vscode/
 .DS_Store
+Thumbs.db
+
+# Local tool output
+workspace/
+extracted/
