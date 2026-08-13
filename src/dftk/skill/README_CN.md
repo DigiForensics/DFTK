@@ -2,7 +2,7 @@
 
 这是 [DigiForensics/DFTK](https://github.com/DigiForensics/DFTK) 的独立 Agent Skill。
 
-DFTK 负责确定性的电子数据取证能力与结构化 `Observation / Evidence`；本仓库只负责告诉 Agent 如何从问题建立证据需求、发现并选择 DFTK 能力、判断证据是否足够、避免错误关联和错误否定，并输出可复核结论。
+DFTK 提供确定性的取证能力与结构化的 `Observation / Evidence` 输出。本仓库教 Agent 如何把一个取证问题转成证据需求、选对 DFTK 能力、核验发现，并写出能回溯到来源的结论。
 
 ## 版本
 
@@ -10,7 +10,7 @@ DFTK 负责确定性的电子数据取证能力与结构化 `Observation / Evide
 
 ## 安装
 
-请安装**整个 Skill 目录**，不要只复制 `SKILL.md`，因为详细取证知识位于 `references/` 中并按需加载。
+请安装**整个 Skill 目录**，不要只复制 `SKILL.md`。Skill 按需加载 `references/`，少了这个目录指引就断了。
 
 常见目录：
 
@@ -23,10 +23,22 @@ DFTK 负责确定性的电子数据取证能力与结构化 `Observation / Evide
 ~/.hermes/skills/dftk/
 ```
 
-DFTK 3.1 也可以安装其发行版内置快照：
+或安装 DFTK 3.1 发行版内置的快照：
 
 ```bash
 dftk skill --install
 ```
 
-本仓库不包含取证解析器，也不实现另一个 Agent Runtime；执行能力仍属于 DFTK 主项目。
+## 目录结构
+
+```text
+dftk/
+  SKILL.md            # 入口：何时用 DFTK、如何界定调查范围
+  references/         # 各领域操作手册，按需加载
+  examples/           # 已完成的调查片段示例
+  templates/          # 输出报告模板
+```
+
+## 设计边界
+
+本仓库不含取证解析器，也不实现 Agent 运行时。它只放 Agent 指令、references、examples 和 templates。执行能力仍在 `DFTK` 主仓库 / PyPI 包中。

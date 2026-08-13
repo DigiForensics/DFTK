@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org)
 [![PyPI](https://img.shields.io/pypi/v/dftk.svg)](https://pypi.org/project/dftk/)
 
-**Evidence-preserving forensic primitives and composable workflows for analysts, automation systems, and autonomous agents.**
+DFTK is a capability layer for digital forensics. It exposes read-only, structured forensic operations you can call from the CLI or compose inside a higher-level Agent / TaskGraph runtime. Every operation returns one `Observation` that carries an explicit status, machine-readable facts, and evidence traced back to its source.
 
 > 🇨🇳 中文文档：[README.zh-CN.md](README.zh-CN.md)
 
@@ -16,19 +16,23 @@
 
 ---
 
-DFTK is a **capability layer**, not an autonomous forensic agent. It exposes stable, structured forensic operations that can be driven directly from the CLI or composed by a higher-level Agent / TaskGraph runtime. Every operation returns a normalized `Observation` with explicit status, machine-readable facts, and source-traceable evidence — so upstream systems can reason about findings instead of scraping terminal output.
+## What DFTK is (and isn't)
+
+DFTK is not an autonomous forensic agent. It is a library of stable, structured operations; you drive it, it does not investigate on its own. Each operation returns a normalized `Observation` so the calling system gets facts and sourced evidence instead of console text to parse.
 
 ## Why DFTK
 
-- **Evidence-first.** Reads are read-only by default; nothing mutates source evidence unless you explicitly raise the safety ceiling.
-- **Zero mandatory dependencies.** The base package installs cleanly anywhere with no third-party runtime requirements. Specialist parsers (E01/TSK, Windows Registry/EVTX, DKIM/SPF, SSH) are optional extras and report `unsupported` when absent rather than silently guessing.
-- **Agent-ready.** A single registry of 68 tools with JSON contracts, semantic tags, declared safety level, network gating, and produced-evidence types — designed for planners to select tools from an evidence requirement.
-- **Safe by construction.** `READ_ONLY < STATEFUL < DESTRUCTIVE`; no registered tool is `DESTRUCTIVE`. Network traffic is independently gated behind an explicit opt-in.
+- **Read-only by default.** Nothing touches source evidence unless you explicitly raise the safety ceiling.
+- **Zero mandatory dependencies.** The base package installs anywhere with no third-party runtime requirements. Optional parsers (E01/TSK, Windows Registry/EVTX, DKIM/SPF, SSH) report `unsupported` when their dependency is missing, instead of guessing.
+- **One registry, 68 tools.** Each tool declares its parameters, safety level, semantic tags, network needs, and produced-evidence types, so a planner can pick the right tool from an evidence requirement.
+- **Safety enforced in one place.** `READ_ONLY < STATEFUL < DESTRUCTIVE`; no registered tool is `DESTRUCTIVE`. Network access is gated behind an explicit opt-in.
 
 ## Contents
 
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [Native MCP for Agents](#native-mcp-for-agents)
+- [Agent Skill](#agent-skill)
 - [Python / Agent API](#python--agent-api)
 - [Observation contract](#observation-contract)
 - [Capability model](#capability-model)
@@ -47,7 +51,7 @@ DFTK is a **capability layer**, not an autonomous forensic agent. It exposes sta
 pip install dftk
 ```
 
-Optional integrations are installed as extras:
+Optional integrations install as extras:
 
 ```bash
 pip install "dftk[email]"     # DKIM / SPF / DNS email authentication
@@ -56,7 +60,7 @@ pip install "dftk[windows]"   # Windows Registry / EVTX parsers
 pip install "dftk[all]"       # every optional parser
 ```
 
-The base package intentionally keeps **zero mandatory runtime dependencies**. E01 filesystem traversal additionally requires a forensic environment providing `pyewf` / libewf bindings and `pytsk3`.
+The base package keeps **zero mandatory runtime dependencies** on purpose. E01 filesystem traversal additionally needs a forensic environment that provides `pyewf` / libewf bindings and `pytsk3`.
 
 ## Quick start
 
@@ -114,6 +118,12 @@ Export the full tool manifest (agent-readable):
 dftk export-manifest --out manifest.json
 ```
 
+Check the current runtime and optional integrations:
+
+```bash
+dftk doctor
+```
+
 Build an investigation case and correlate its runs into one timeline:
 
 ```bash
@@ -122,28 +132,22 @@ dftk case run <case_id> timeline.file_metadata --params '{"root":"mnt/evidence"}
 dftk case timeline <case_id>
 ```
 
-
 ### Native MCP for Agents
 
-DFTK 3.1 adds a native, local **stdio MCP** adapter. It is deliberately a thin protocol layer over the existing Registry / Observation / CaseSession APIs — not a second Agent runtime.
+DFTK 3.1 adds a native local **stdio MCP** adapter. It is a thin protocol layer over the existing Registry / Observation / CaseSession APIs, not a second Agent runtime.
 
 Install the optional MCP dependency and start the server from the evidence root you intend to expose:
 
 ```bash
 pip install "dftk[mcp]"
 cd /path/to/authorized/evidence-root
+dftk doctor
 dftk mcp
 ```
 
-The MCP server exposes six meta-tools: health, capability search, describe, run, case management, and paged reading of persisted case runs. It defaults to `READ_ONLY`, network-off, stdio-only operation; the Agent cannot raise the safety ceiling or enable network access. `--root`, `--max-safety`, `--allow-network`, and timeout are server-owner launch decisions.
+The MCP server exposes six meta-tools: health check, capability search, describe, run, case management, and paged reading of persisted case runs. It defaults to `READ_ONLY`, network-off, stdio-only operation. The Agent cannot raise the safety ceiling or enable network access; `--root`, `--max-safety`, `--allow-network`, and timeout are set by whoever launches the server.
 
-For multi-step investigations, create a normal DFTK case and pass its `case_id` to MCP `dftk_run`; the Observation is persisted through the same `CaseSession` format used by the CLI.
-
-```bash
-dftk doctor
-dftk mcp --root . --workspace .dftk
-```
-
+For multi-step investigations, create a normal DFTK case and pass its `case_id` to the MCP `dftk_run` tool; the Observation is persisted in the same `CaseSession` format the CLI uses.
 
 ### Agent Skill
 
@@ -154,7 +158,7 @@ dftk skill --install
 dftk skill --install --target kimi,workbuddy,agents
 ```
 
-The Skill remains documentation/reasoning guidance; executable forensic capabilities remain in DFTK.
+The skill stays documentation and reasoning guidance; the executable capabilities remain in DFTK.
 
 ## Python / Agent API
 
@@ -188,7 +192,7 @@ errors[]     execution or parsing failures
 meta         tool and run metadata
 ```
 
-`unsupported`, `error`, `blocked`, and a genuine negative finding are deliberately **different** states — a missing parser is not the same as "no findings".
+`unsupported`, `error`, `blocked`, and a genuine negative finding are deliberately **different** states. A missing parser is not the same as "no findings".
 
 ## Capability model
 
@@ -206,12 +210,12 @@ DFTK 3.1.0 contains a registry of **68 tools** (67 `READ_ONLY`, 1 `STATEFUL`) an
 - E01 / TSK filesystem inventory through specialist forensic bindings;
 - Chromium / Edge and Firefox artifacts;
 - MIME / email authentication analysis;
-- BIP39, entropy and reversible encoding helpers.
-- Unified timeline correlation and investigation case sessions: merge event sources into one source-attributed timeline, and accumulate tool runs in an isolated `dftk case` workspace.
+- BIP39, entropy and reversible encoding helpers;
+- unified timeline correlation and investigation case sessions: merge event sources into one source-attributed timeline, and accumulate tool runs in an isolated `dftk case` workspace.
 
 ### Case correlation & unified timeline
 
-`timeline.merge` normalizes and correlates time-bearing events from multiple dftk tool outputs (or inline sources) into one sorted, source-attributed timeline — useful for fusing filesystem metadata, authentication logs and browser history.
+`timeline.merge` normalizes and correlates time-bearing events from multiple dftk tool outputs (or inline sources) into one sorted, source-attributed timeline. It is useful for fusing filesystem metadata, authentication logs and browser history.
 
 `dftk case` wraps the read-only tools into an isolated investigation session. It records each run's `Observation` under a workspace (`.dftk/cases/<id>/`) and can correlate them into a single timeline or export a report:
 
@@ -243,11 +247,11 @@ dftk run archive.extract_safe \
   --params '{"path":"evidence.zip","output_dir":"workspace/extracted"}'
 ```
 
-Full details — database access, archive guards, specialist-parser semantics, legacy-script policy — are in [`SAFETY.md`](SAFETY.md).
+Full details on database access, archive guards, specialist-parser semantics and the legacy-script policy are in [`SAFETY.md`](SAFETY.md).
 
 ## Supported Python versions
 
-DFTK supports **CPython 3.10+** on OS-independent platforms. Verified on 3.10, 3.11, 3.12 and 3.13.
+DFTK supports **CPython 3.10+** on platform-independent builds. Verified on 3.10, 3.11, 3.12 and 3.13.
 
 ## Development
 
@@ -279,11 +283,11 @@ python -m twine check --strict dist/*
 
 ## Contributing
 
-Small, deterministic forensic primitives are favored over challenge-specific answer scripts. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full guidelines, then open a pull request.
+Small, deterministic forensic primitives are preferred over challenge-specific answer scripts. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full guidelines, then open a pull request.
 
 ## Security
 
-Please report vulnerabilities privately — do **not** open a public issue. See [`SECURITY.md`](SECURITY.md).
+Report vulnerabilities privately — do **not** open a public issue. See [`SECURITY.md`](SECURITY.md).
 
 ## License
 
@@ -291,4 +295,4 @@ Released under the [Apache License 2.0](LICENSE). Copyright 2026 DyNooob @ DigiF
 
 ## Disclaimer
 
-DFTK is a technical toolkit, not legal advice. It is designed to support lawful, authorized forensic examination of evidence you own or are explicitly permitted to analyze. Users are responsible for compliance with applicable laws, authorization requirements, and chain-of-custody practices in their jurisdiction. The maintainers accept no liability for misuse.
+DFTK is a technical toolkit, not legal advice. It is built to support lawful, authorized examination of evidence you own or are explicitly permitted to analyze. You are responsible for complying with applicable laws, authorization requirements, and chain-of-custody practices in your jurisdiction. The maintainers accept no liability for misuse.

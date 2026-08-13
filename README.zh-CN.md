@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org)
 [![PyPI](https://img.shields.io/badge/PyPI-dftk%20%C2%B7%20soon-lightgrey.svg)](#安装)
 
-**面向取证分析师、自动化系统与自主智能体的、保留证据完整性的取证原语与可组合工作流。**
+DFTK 是数字取证领域的一层能力封装。它提供默认只读、结构化的取证操作，既可以直接在命令行调用，也能由上层 Agent / TaskGraph 运行时组合使用。每次操作都返回一个 `Observation`，里面带有明确的状态、机器可读的事实，以及可回溯到来源的证据。
 
 > 🇺🇸 English: [README.md](README.md)
 
@@ -16,14 +16,16 @@
 
 ---
 
-DFTK 是一个**能力层（capability layer）**，而不是一个自主取证智能体。它对外提供稳定、结构化的取证操作，既可以直接通过命令行调用，也可以由上层 Agent / TaskGraph 运行时进行组合。每次操作都会返回一个标准化的 `Observation`，其中包含明确的状态、机器可读的事实，以及可溯源到来源的证据——这样上层系统就能基于结果进行推理，而不必再去解析终端输出。
+## DFTK 是什么（以及不是什么）
 
-## 为什么选择 DFTK
+DFTK 不是一个自主取证智能体，而是一组稳定、结构化的操作库。由你驱动它，它不会自己开展调查。每次操作返回一个标准化的 `Observation`，调用方拿到的是事实与可溯源证据，而不是需要再去解析的终端文本。
 
-- **以证据为先。** 默认只读；除非你显式提升安全级别，否则任何操作都不会修改原始证据。
-- **零强制依赖。** 基础包可在任何环境干净安装，无需任何第三方运行依赖。专业解析器（E01/TSK、Windows 注册表/EVTX、DKIM/SPF、SSH）为可选扩展；缺失时返回 `unsupported`，而非静默猜测。
-- **面向智能体。** 统一的 68 个工具注册表，带有 JSON 契约、语义标签、声明的安全级别、网络开关，以及所产出证据的类型——便于规划器根据证据需求选择工具。
-- **默认安全。** `READ_ONLY < STATEFUL < DESTRUCTIVE`；所有注册工具中没有任何一个是 `DESTRUCTIVE`。网络流量需显式开启，独立受控。
+## 为什么用 DFTK
+
+- **默认只读。** 除非你显式提升安全级别，否则任何操作都不会改动原始证据。
+- **零强制依赖。** 基础包可在任何环境干净安装，无需第三方运行依赖。专业解析器（E01/TSK、Windows 注册表/EVTX、DKIM/SPF、SSH）在依赖缺失时返回 `unsupported`，而不是替你瞎猜。
+- **一个注册表，68 个工具。** 每个工具都声明了参数、安全级别、语义标签、网络需求与产出证据类型，规划器可以据此按证据需求挑选工具。
+- **安全集中管控。** `READ_ONLY < STATEFUL < DESTRUCTIVE`；所有已注册工具中没有任何一个是 `DESTRUCTIVE`。网络访问独立受控，必须显式开启。
 
 ## 目录
 
@@ -114,6 +116,12 @@ dftk recipe artifact.auto_triage --params '{"path":"unknown.bin"}'
 dftk export-manifest --out manifest.json
 ```
 
+检查当前运行环境与可选集成：
+
+```bash
+dftk doctor
+```
+
 建立一个调查案例，并将其各次运行关联为一条统一时间线：
 
 ```bash
@@ -121,6 +129,32 @@ dftk case new --name intake
 dftk case run <case_id> timeline.file_metadata --params '{"root":"mnt/evidence"}'
 dftk case timeline <case_id>
 ```
+
+### 原生 MCP（Agent 接入）
+
+DFTK 3.1 新增原生本地 **stdio MCP** 接口。它只是现有 Registry / Observation / CaseSession 之上的协议适配层，不实现另一套 Agent 运行时。
+
+```bash
+pip install "dftk[mcp]"
+cd <授权检材根目录>
+dftk doctor
+dftk mcp
+```
+
+MCP 默认 `READ_ONLY`、禁止网络、仅使用 stdio，并只暴露 6 个元工具：环境检查、能力发现、能力描述、运行、Case 管理、读取已持久化的 Case Observation。模型不能自行提高安全等级、开启网络或修改 evidence root；这些只能由启动 MCP 的人员设置。
+
+对于多步调查，先建一个普通 DFTK case，再把 `case_id` 传给 MCP 的 `dftk_run` 工具；Observation 会以 CLI 相同的 `CaseSession` 格式落盘。
+
+### Agent Skill
+
+独立的取证推理指引位于 `DigiForensics/DFTK-skill`。DFTK 3.1 内置了对齐版本的快照，并会安装**整个**渐进式 skill 目录（不只 `SKILL.md`）：
+
+```bash
+dftk skill --install
+dftk skill --install --target kimi,workbuddy,agents
+```
+
+Skill 只承载文档与推理指引，真正的执行能力仍在 DFTK 内。
 
 ## Python / 智能体 API
 
@@ -154,7 +188,7 @@ errors[]     执行或解析失败
 meta         工具与运行元数据
 ```
 
-`unsupported`、`error`、`blocked` 与真正的“无发现（negative finding）”是**不同**的状态——解析器缺失不等于“没有发现”。
+`unsupported`、`error`、`blocked` 与真正的"无发现（negative finding）"是**不同**的状态。解析器缺失不等于"没有发现"。
 
 ## 能力模型
 
@@ -172,14 +206,14 @@ DFTK 3.1.0 包含 **68 个工具**（67 个 `READ_ONLY`、1 个 `STATEFUL`）和
 - 通过专业取证绑定的 E01 / TSK 文件系统清单；
 - Chromium / Edge 与 Firefox 痕迹；
 - MIME / 邮件认证分析；
-- BIP39、熵分析与可逆编码辅助。
+- BIP39、熵分析与可逆编码辅助；
 - 统一时间线关联与调查案例会话：将多个事件源合并为按来源归类的统一时间线，并在隔离的 `dftk case` 工作区中累积工具运行。
 
 ### 案例关联与统一时间线
 
-`timeline.merge` 将来自多个 dftk 工具输出（或内联来源）的时间相关事件归一化并关联为一条已排序、按来源归类的时间线——适用于融合文件系统元数据、认证日志与浏览器历史。
+`timeline.merge` 把来自多个 dftk 工具输出（或内联来源）的时间相关事件归一化、关联为一条已排序、按来源归类的时间线——适用于融合文件系统元数据、认证日志与浏览器历史。
 
-`dftk case` 将只读工具封装为隔离的调查会话。它在工作区（`.dftk/cases/<id>/`）下记录每次运行的 `Observation`，并可将其关联为单一时间线或导出报告：
+`dftk case` 把只读工具封装成隔离的调查会话。它在工作区（`.dftk/cases/<id>/`）下记录每次运行的 `Observation`，并可关联为单一时间线或导出报告：
 
 ```bash
 dftk case new --name phishing-intake
@@ -193,7 +227,7 @@ dftk case export <case_id> --format md
 
 ## 安全模型
 
-DFTK 将“执行安全”与“取证推理”分离：
+DFTK 把"执行安全"与"取证推理"分开：
 
 | 级别 | 行为 |
 |------|------|
@@ -245,7 +279,7 @@ python -m twine check --strict dist/*
 
 ## 贡献
 
-我们更倾向于小而确定的取证原语，而不是针对特定题目的答案脚本。完整指南见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，然后提交 Pull Request。
+我们更偏好小而确定的取证原语，而不是针对特定题目的答案脚本。完整指南见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，然后提交 Pull Request。
 
 ## 安全
 
@@ -257,27 +291,4 @@ python -m twine check --strict dist/*
 
 ## 免责声明
 
-DFTK 是一个技术工具包，不构成法律建议。它旨在支持对你拥有或明确获授权分析的取证证据进行合法、授权的检验。用户须自行遵守所在司法辖区的适用法律、授权要求与证据链（chain-of-custody）规范。维护者不对任何滥用行为承担责任。
-
-
-## 原生 MCP（Agent 接入）
-
-DFTK 3.1 新增原生本地 **stdio MCP** 接口。它只是现有 Registry / Observation / CaseSession 的协议适配层，不实现另一套 Agent Runtime。
-
-```bash
-pip install "dftk[mcp]"
-cd <授权检材根目录>
-dftk doctor
-dftk mcp
-```
-
-MCP 默认 `READ_ONLY`、禁止网络、仅使用 stdio，并只暴露 6 个元工具：环境检查、能力发现、能力描述、运行、Case 管理、读取已持久化的 Case Observation。模型不能自行提高安全等级、开启网络或修改 evidence root；这些只能由启动 MCP 的人员设置。
-
-DFTK 3.1 同时可以安装与 `DFTK-skill` 3.1.0 对齐的完整 Skill 目录：
-
-```bash
-dftk skill --install
-```
-
-详细取证推理规则仍属于独立 `DigiForensics/DFTK-skill` 仓库，DFTK 主项目保持 capability layer 定位。
-
+DFTK 是一个技术工具包，不构成法律建议。它旨在支持对你拥有或明确获授权分析的取证证据进行合法、授权的检验。你须自行遵守所在司法辖区的适用法律、授权要求与证据链（chain-of-custody）规范。维护者不对任何滥用行为承担责任。
