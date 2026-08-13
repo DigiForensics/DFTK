@@ -1,7 +1,7 @@
 ---
 name: dftk
 description: Evidence-preserving digital forensics (DFIR) toolkit for agents. 68 read-only/stateful tools plus a unified-timeline and case-correlation workflow across Android, Linux, Windows, network, email, and crypto, behind a safety-gated Observation/Evidence contract. Use when an agent must collect, hash, parse, analyze, or correlate forensic artifacts without mutating evidence.
-version: 3.0.0
+version: 3.1.0
 author: DyNooob @ DigiForensics
 license: Apache-2.0
 tags:
@@ -14,7 +14,7 @@ tags:
 
 # dftk — Digital Forensics Toolkit (Agent Skill)
 
-dftk is a **capability layer**, not an autonomous forensic agent: a set of
+dftk is a **read-only forensic toolkit**, not an autonomous forensic agent: a set of
 evidence-preserving primitives and composable recipes for analysts, automation,
 and agents. Every tool returns a structured `Observation` (status + facts +
 evidence with source provenance).

@@ -1,6 +1,6 @@
 # DFTK 3.1.0 release notes
 
-DFTK 3.1 keeps the project boundary introduced in 3.0: DFTK is a deterministic forensic capability layer, not an autonomous Agent. The release adds a native Agent transport and strengthens the existing case workspace without changing the public Observation/Evidence contract.
+DFTK 3.1 keeps the project boundary introduced in 3.0: DFTK is a deterministic forensic toolkit, not an autonomous Agent. The release adds a native Agent transport and strengthens the existing case workspace without changing the public Observation/Evidence contract.
 
 ## Native MCP
 

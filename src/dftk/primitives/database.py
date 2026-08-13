@@ -32,7 +32,7 @@ def sqlite_inventory(path:str,count_rows:bool=True,table_limit:int=500)->Observa
         for typ,name,tbl,sql in rows:
             row={"type":typ,"name":name,"table":tbl,"sql":sql}
             if count_rows and typ=='table' and not name.startswith('sqlite_'):
-                try: row['row_count']=con.execute(f'SELECT COUNT(*) FROM "{name.replace(chr(34),chr(34)*2)}"').fetchone()[0]
+                try: row['row_count']=con.execute(f'SELECT COUNT(*) FROM "{name.replace(chr(34), chr(34)*2)}"').fetchone()[0]
                 except sqlite3.DatabaseError as e: row['row_count_error']=str(e)
             objects.append(row); ev.append(Evidence(str(p),'sqlite_schema',sql or name,locator=f"sqlite_master:{typ}:{name}"))
         qc=con.execute('PRAGMA quick_check').fetchone()[0]
@@ -93,7 +93,7 @@ def sql_dump_inventory(path:str,max_bytes:int=256*1024*1024,statement_limit:int=
                 if not raw: break
                 scanned+=len(raw)
                 line=raw.decode('utf-8','replace')
-                if not buf and line.lstrip().startswith(('--','#')): continue
+                if line.lstrip().startswith(('--','#')): continue
                 buf+=line
                 # Process complete-ish statements at semicolon boundaries. This is intentionally a schema/activity inventory, not a full SQL parser.
                 while ';' in buf and statements<statement_limit:

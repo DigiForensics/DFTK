@@ -28,8 +28,8 @@ Only the latest published release line receives security fixes.
 
 | Version | Supported |
 |---------|-----------|
-| 2.1.x   | ✅ Yes |
-| < 2.1   | ❌ No |
+| 3.1.x   | ✅ Yes |
+| < 3.1   | ❌ No |
 
 ## Scope notes
 

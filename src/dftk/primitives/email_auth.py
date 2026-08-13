@@ -21,7 +21,7 @@ from email.utils import parseaddr
 import re, hashlib, os
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Evidence,Status,SafetyLevel
-from dftk.core.helpers import sha256_file
+from dftk.core.helpers import sha256_file, read_file_bounded_observation
 
 
 def _decode(v:str)->str:
@@ -58,7 +58,7 @@ def _parse_dkim_domains(headers:list[str]):
 def auth_analyze(path:str)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation("email.auth_analyze",Status.ERROR,"EML file not found",errors=[str(p)])
-    raw=p.read_bytes()
+    raw,err=read_file_bounded_observation('email.auth_analyze',p,256*1024*1024); if err: return err
     try: msg=BytesParser(policy=policy.default).parsebytes(raw)
     except Exception as e: return Observation("email.auth_analyze",Status.ERROR,"Email parse failed",errors=[str(e)],meta={"source_sha256":sha256_file(p)})
     from_name,from_addr=parseaddr(_decode(msg.get('From','')))
@@ -96,7 +96,7 @@ def dkim_verify(path:str)->Observation:
     if not p.is_file(): return Observation("email.dkim_verify",Status.ERROR,"EML file not found",errors=[str(p)])
     try: import dkim
     except ImportError: return Observation("email.dkim_verify",Status.UNSUPPORTED,"dkimpy is not installed",errors=["install optional dependency: pip install 'dftk[email]'"],meta={"source_sha256":sha256_file(p)})
-    raw=p.read_bytes()
+    raw,err=read_file_bounded_observation('email.dkim_verify',p,256*1024*1024); if err: return err
     try:
         ok=bool(dkim.verify(raw))
     except Exception as e:
@@ -122,7 +122,8 @@ def mime_inventory(path:str,include_body_preview:bool=False,preview_chars:int=10
     import hashlib
     p=Path(path)
     if not p.is_file(): return Observation('email.mime_inventory',Status.ERROR,'Email file not found',errors=[str(p)])
-    try: msg=BytesParser(policy=policy.default).parsebytes(p.read_bytes())
+    data,err=read_file_bounded_observation('email.mime_inventory',p,256*1024*1024); if err: return err
+    try: msg=BytesParser(policy=policy.default).parsebytes(data)
     except Exception as e: return Observation('email.mime_inventory',Status.ERROR,'Email parsing failed',errors=[f'{type(e).__name__}: {e}'],meta={'source_sha256':sha256_file(p)})
     headers={k:str(v) for k,v in msg.items()}; parts=[]; attachments=[]; ev=[]
     iterable=list(msg.walk()) if msg.is_multipart() else [msg]

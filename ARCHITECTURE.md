@@ -59,9 +59,9 @@ The registry propagates a known source SHA-256 from observation metadata into ev
 
 `READ_ONLY < STATEFUL < DESTRUCTIVE`.
 
-The default policy allows only `READ_ONLY` and disallows network traffic. In 2.1:
+The default policy allows only `READ_ONLY` and disallows network traffic. In 3.1:
 
-- 65 tools are `READ_ONLY`;
+- 67 tools are `READ_ONLY` (68 registered in total);
 - `archive.extract_safe` is `STATEFUL` because it writes a derived workspace while leaving the source archive unchanged;
 - no registered tool is `DESTRUCTIVE`;
 - network-capable tools are separately gated.

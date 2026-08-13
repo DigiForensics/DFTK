@@ -13,7 +13,7 @@ tags:
 ---
 # DFTK — Digital Forensics Toolkit
 
-DFTK is a **forensic capability layer**, not the investigator. You are the investigator.
+DFTK is a **read-only forensic toolkit**, not the investigator. You are the investigator.
 Use DFTK to obtain deterministic, source-traceable observations; use reasoning to decide what must be proven, which capability can prove it, whether the evidence is sufficient, and when to stop.
 
 The governing rule is:

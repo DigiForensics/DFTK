@@ -18,7 +18,7 @@ import struct,socket,re
 from collections import Counter
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Evidence,Status,SafetyLevel
-from dftk.core.helpers import sha256_file
+from dftk.core.helpers import sha256_file, read_file_bounded_observation
 
 class PcapError(ValueError): pass
 
@@ -29,7 +29,7 @@ def _ip(b): return socket.inet_ntoa(b)
 def pcap_inventory(path:str,packet_limit:int=200000,sample_limit:int=200)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation("network.pcap_inventory",Status.ERROR,"PCAP not found",errors=[str(p)])
-    data=p.read_bytes()
+    data,err=read_file_bounded_observation('network.pcap_inventory',p,4*1024*1024*1024); if err: return err
     if len(data)<24: return Observation("network.pcap_inventory",Status.UNSUPPORTED,"PCAP too small",meta={"source_sha256":sha256_file(p)})
     magic=data[:4]
     fmts={b'\xd4\xc3\xb2\xa1':('<',False),b'\xa1\xb2\xc3\xd4':('>',False),b'M<\xb2\xa1':('<',True),b'\xa1\xb2<M':('>',True)}
@@ -211,7 +211,7 @@ def _tls_sni(payload:bytes):
 def pcapng_inventory(path:str,packet_limit:int=200000,sample_limit:int=200)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('network.pcapng_inventory',Status.ERROR,'PCAPNG not found',errors=[str(p)])
-    data=p.read_bytes(); flows=Counter(); protos=Counter(); samples=[]; count=0; unsupported_links=Counter()
+    data,err=read_file_bounded_observation('network.pcapng_inventory',p,4*1024*1024*1024); if err: return err; flows=Counter(); protos=Counter(); samples=[]; count=0; unsupported_links=Counter()
     try:
         for num,link,ts,pkt in _pcapng_packets(data,packet_limit):
             count=num
@@ -233,7 +233,7 @@ def pcapng_inventory(path:str,packet_limit:int=200000,sample_limit:int=200)->Obs
 def capture_protocols(path:str,packet_limit:int=200000,limit:int=5000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('network.capture_protocols',Status.ERROR,'Capture not found',errors=[str(p)])
-    data=p.read_bytes(); dns=[]; http=[]; tls=[]; warnings=[]; count=0
+    data,err=read_file_bounded_observation('network.capture_protocols',p,4*1024*1024*1024); if err: return err; dns=[]; http=[]; tls=[]; warnings=[]; count=0
     try: packets,fmt=_capture_packets(data,packet_limit)
     except PcapError as e: return Observation('network.capture_protocols',Status.UNSUPPORTED,'Unsupported capture',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
     try:

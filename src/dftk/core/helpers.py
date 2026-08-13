@@ -55,3 +55,41 @@ def bounded_files(root: Path, *, max_files: int = 10000):
             n += 1
             if n >= max_files:
                 return
+
+# In-memory read ceiling for tools that must load the whole file. Forensic
+# evidence can legitimately be large, but loading multi-GB inputs unconditionally
+# risks out-of-memory; per-tool overrides are allowed.
+DEFAULT_MAX_READ = 4 * 1024 * 1024 * 1024
+
+def read_file_bounded(path: str | os.PathLike[str], max_bytes: int = DEFAULT_MAX_READ):
+    """Read a file fully, refusing inputs above ``max_bytes`` to avoid OOM.
+
+    Returns ``(data, None)`` on success, or ``(None, err)`` where ``err`` is a
+    dict with ``kind`` of ``"too_large"`` or ``"stat"`` and supporting fields.
+    The caller is responsible for converting ``err`` into an ``Observation``.
+    """
+    p = Path(path)
+    try:
+        size = p.stat().st_size
+    except OSError as e:
+        return None, {"kind": "stat", "error": str(e)}
+    if size > max_bytes:
+        return None, {"kind": "too_large", "size": size, "limit": max_bytes}
+    return p.read_bytes(), None
+
+def read_file_bounded_observation(name: str, path: str | os.PathLike[str], max_bytes: int = DEFAULT_MAX_READ):
+    """Like :func:`read_file_bounded`, but returns ``(data, None)`` or ``(None, Observation)``.
+
+    On oversized input the Observation is ``UNSUPPORTED``; on a stat/read failure it is ``ERROR``.
+    Both carry the source SHA-256 so the caller can return them directly.
+    """
+    from .models import Observation, Status
+    data, err = read_file_bounded(path, max_bytes)
+    if err is None:
+        return data, None
+    if err["kind"] == "too_large":
+        return None, Observation(name, Status.UNSUPPORTED, "File exceeds in-memory read limit",
+                                 errors=[f"size={err['size']} > limit={err['limit']}"],
+                                 meta={"source_sha256": sha256_file(path)})
+    return None, Observation(name, Status.ERROR, "File read failed", errors=[err["error"]],
+                             meta={"source_sha256": sha256_file(path)})
