@@ -32,3 +32,6 @@ Thumbs.db
 # Local tool output
 workspace/
 extracted/
+
+# APPLY_UPDATE.py backups (pre-3.1.0 replaced-file snapshots)
+.dftk-update-backup-*/

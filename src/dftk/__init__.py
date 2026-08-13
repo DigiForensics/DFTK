@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Public API for Digital Forensics Toolkit."""
 from __future__ import annotations
 
@@ -21,7 +20,7 @@ from .catalog import load_builtin_tools
 from .core.registry import ToolRegistry, registry
 from .core.safety import SafetyPolicy
 
-__version__ = "3.0.0"
+__version__ = "3.1.0"
 
 
 def get_registry() -> ToolRegistry:

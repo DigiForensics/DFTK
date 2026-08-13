@@ -15,7 +15,7 @@ Include as much of the following as possible:
 
 - a description of the vulnerability and its impact;
 - steps to reproduce or a proof of concept;
-- affected versions (e.g. `2.1.0`);
+- affected versions (e.g. `3.1.0`);
 - any suggested mitigation, if known.
 
 You can expect an initial acknowledgement within a few business days. Once the

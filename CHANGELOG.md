@@ -2,6 +2,18 @@
 
 All notable public changes to DFTK are recorded here.
 
+## 3.1.0 — Native MCP and complete Agent Skill bundle
+
+- Added native local stdio MCP as a thin adapter over the existing ToolRegistry, Observation and CaseSession interfaces.
+- MCP exposes six meta-tools for health, capability discovery, describe, execution, case management and paged case-run reading; it does not implement an autonomous Agent loop.
+- MCP defaults to READ_ONLY, network-off operation; root scope, network opt-in and STATEFUL ceiling are server-owner launch settings and are not model tool arguments.
+- Capability execution is isolated in a worker process with a hard timeout so noisy parser stdout cannot corrupt stdio MCP framing.
+- Case-scoped MCP execution is serialized to protect the existing CaseSession manifest read/sequence/write operation from concurrent requests.
+- Added `dftk doctor` environment/capability diagnostics.
+- `dftk skill --install` now installs the full progressive-disclosure DFTK Skill bundle (references/examples/templates), with Kimi/CodeBuddy targets added alongside existing targets.
+- Added optional `mcp` dependency extra; base DFTK continues to have zero mandatory runtime dependencies.
+- Public Python integration remains `get_registry()` / `run_tool()` with no breaking Observation/Evidence changes.
+
 ## 3.0.0 — Unified timeline & case correlation
 
 - Added unified timeline correlation: `timeline.merge` normalizes and merges time-bearing events from multiple dftk tool outputs or inline sources into one source-attributed, sorted timeline.

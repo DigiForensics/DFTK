@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dftk"
-version = "3.0.0"
+version = "3.1.0"
 description = "Evidence-preserving digital forensics primitives and composable workflows for analysts, automation systems, and autonomous agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,6 +21,7 @@ keywords = [
   "windows-forensics",
   "linux-forensics",
   "agent-tools",
+  "mcp",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -41,8 +42,9 @@ dependencies = []
 email = ["dkimpy>=1.1", "dnspython>=2.4", "pyspf>=2.0"]
 ssh = ["paramiko>=3.4"]
 windows = ["python-registry>=1.3", "python-evtx>=0.8"]
-all = ["dkimpy>=1.1", "dnspython>=2.4", "pyspf>=2.0", "paramiko>=3.4", "python-registry>=1.3", "python-evtx>=0.8"]
-dev = ["pytest>=8", "build>=1.2", "twine>=5"]
+mcp = ["mcp==2.0.0"]
+all = ["dkimpy>=1.1", "dnspython>=2.4", "pyspf>=2.0", "paramiko>=3.4", "python-registry>=1.3", "python-evtx>=0.8", "mcp==2.0.0"]
+dev = ["pytest>=8", "build>=1.2", "twine>=5", "mcp==2.0.0"]
 
 [project.urls]
 Homepage = "https://www.digiforensics.cn"
@@ -62,4 +64,13 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-dftk = ["SKILL.md", "data/*.txt"]
+dftk = [
+  "SKILL.md",
+  "data/*.txt",
+  "skill/*.md",
+  "skill/LICENSE",
+  "skill/references/*.md",
+  "skill/references/domains/*.md",
+  "skill/examples/*.md",
+  "skill/templates/*.md",
+]

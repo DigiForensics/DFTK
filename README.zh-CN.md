@@ -158,7 +158,7 @@ meta         工具与运行元数据
 
 ## 能力模型
 
-DFTK 3.0.0 包含 **68 个工具**（67 个 `READ_ONLY`、1 个 `STATEFUL`）和 **14 个配方**，覆盖：
+DFTK 3.1.0 包含 **68 个工具**（67 个 `READ_ONLY`、1 个 `STATEFUL`）和 **14 个配方**，覆盖：
 
 - 取证对象识别、哈希、字符串、搜索与时间线；
 - APK、DEX、二进制 AXML、Android 应用数据与端点提取；
@@ -199,7 +199,7 @@ DFTK 将“执行安全”与“取证推理”分离：
 |------|------|
 | `READ_ONLY` | 读取证据或不可变 / 只读视图 |
 | `STATEFUL` | 可写入派生的临时工作区，但不修改原始证据 |
-| `DESTRUCTIVE` | 保留给会修改目标的操作；**3.0.0 中未注册任何此类工具** |
+| `DESTRUCTIVE` | 保留给会修改目标的操作；**3.1.0 中未注册任何此类工具** |
 
 默认策略只允许 `READ_ONLY` 操作。网络访问独立受控，必须通过 `--allow-network` 显式开启。受控的归档解压（`archive.extract_safe`）为 `STATEFUL`，除非调用方显式提升安全上限，否则会被拦截：
 
@@ -237,6 +237,7 @@ python -m twine check --strict dist/*
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — 公开工具边界、证据契约、原语与配方之别、晋升规则。
 - [`CAPABILITIES.md`](CAPABILITIES.md) — 按领域划分的完整能力地图。
 - [`SAFETY.md`](SAFETY.md) — 安全级别、网络隔离、数据库/归档防护、专业解析器语义。
+- [`AGENT_INTEGRATION.md`](AGENT_INTEGRATION.md) — 原生 stdio MCP 与宿主 Agent 接入示例。
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — 如何新增能力并提交 PR。
 - [`SECURITY.md`](SECURITY.md) — 漏洞披露政策。
 - [`CHANGELOG.md`](CHANGELOG.md) — 重要公开变更。
@@ -257,3 +258,26 @@ python -m twine check --strict dist/*
 ## 免责声明
 
 DFTK 是一个技术工具包，不构成法律建议。它旨在支持对你拥有或明确获授权分析的取证证据进行合法、授权的检验。用户须自行遵守所在司法辖区的适用法律、授权要求与证据链（chain-of-custody）规范。维护者不对任何滥用行为承担责任。
+
+
+## 原生 MCP（Agent 接入）
+
+DFTK 3.1 新增原生本地 **stdio MCP** 接口。它只是现有 Registry / Observation / CaseSession 的协议适配层，不实现另一套 Agent Runtime。
+
+```bash
+pip install "dftk[mcp]"
+cd <授权检材根目录>
+dftk doctor
+dftk mcp
+```
+
+MCP 默认 `READ_ONLY`、禁止网络、仅使用 stdio，并只暴露 6 个元工具：环境检查、能力发现、能力描述、运行、Case 管理、读取已持久化的 Case Observation。模型不能自行提高安全等级、开启网络或修改 evidence root；这些只能由启动 MCP 的人员设置。
+
+DFTK 3.1 同时可以安装与 `DFTK-skill` 3.1.0 对齐的完整 Skill 目录：
+
+```bash
+dftk skill --install
+```
+
+详细取证推理规则仍属于独立 `DigiForensics/DFTK-skill` 仓库，DFTK 主项目保持 capability layer 定位。
+

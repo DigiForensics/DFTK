@@ -88,7 +88,8 @@ def dex_strings(path:str, contains:str|None=None, regex:str|None=None, limit:int
     if not p.is_file(): return Observation("android.dex_strings",Status.ERROR,"DEX file not found",errors=[str(p)])
     try: rows=parse_dex_strings(p.read_bytes())
     except DexFormatError as e: return Observation("android.dex_strings",Status.UNSUPPORTED,"DEX parsing failed",errors=[str(e)],meta={"source_sha256":sha256_file(p)})
-    rx=re.compile(regex) if regex else None
+    try: rx=re.compile(regex) if regex else None
+    except re.error as e: return Observation("android.dex_strings",Status.ERROR,"Invalid regular expression",errors=[str(e)])
     filtered=[]
     for r in rows:
         if contains is not None and contains.lower() not in r.value.lower(): continue
@@ -122,7 +123,9 @@ def apk_inventory(path:str)->Observation:
 def apk_search(path:str,query:str,regex:bool=False,limit:int=500)->Observation:
     p=Path(path)
     if not zipfile.is_zipfile(p): return Observation("android.apk_search",Status.UNSUPPORTED,"Input is not a ZIP/APK")
-    rx=re.compile(query) if regex else None; hits=[]; errors=[]
+    hits=[]; errors=[]
+    try: rx=re.compile(query) if regex else None
+    except re.error as e: return Observation("android.apk_search",Status.ERROR,"Invalid regular expression",errors=[str(e)])
     with zipfile.ZipFile(p) as z:
         for name in sorted(z.namelist()):
             if not re.fullmatch(r"classes(?:\d+)?\.dex",name): continue

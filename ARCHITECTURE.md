@@ -96,3 +96,27 @@ A legacy technique becomes a registered primitive only when:
 4. safety and network behavior are declared;
 5. bounds exist for potentially large scans;
 6. a regression test covers the promoted behavior.
+
+## Native MCP boundary (3.1)
+
+The MCP server is an adapter, not a new forensic runtime:
+
+```text
+Host Agent
+    |
+    | stdio MCP (6 meta-tools)
+    v
+DFTK MCP adapter
+    |  server-owned root / SafetyPolicy / network gate / timeout
+    v
+ToolRegistry -------- CaseSession (optional persistence)
+    |
+    v
+Observation / Evidence
+```
+
+MCP capability execution is delegated to an isolated worker process. The parent server keeps stdout reserved for JSON-RPC framing and serializes runs so CaseSession's manifest update sequence is not raced by concurrent Agent requests.
+
+The MCP tool schema deliberately omits `allow_network` and safety-escalation arguments. Those are server launch policy. `DESTRUCTIVE` is not an accepted MCP ceiling. Paths passed to capabilities are constrained to the server owner's `--root`. Large model-facing responses are bounded; full large Observations should be persisted in a DFTK case and paged through the case-run reader.
+
+The Agent remains responsible for question decomposition, evidence requirements, hypothesis management, verification and stopping. Those methods live in `DFTK-skill`, not in the capability runtime.

@@ -65,6 +65,11 @@ def _norm_event(ev: dict[str, Any], source: str) -> dict[str, Any] | None:
     ep = _to_epoch(ev)
     if ep is None:
         return None
+    conf_raw = ev.get("confidence", 1.0)
+    try:
+        confidence = float(conf_raw)
+    except (TypeError, ValueError):
+        confidence = 1.0
     return {
         "epoch": ep,
         "time": _iso(ep),
@@ -72,7 +77,7 @@ def _norm_event(ev: dict[str, Any], source: str) -> dict[str, Any] | None:
         "kind": ev.get("kind") or ev.get("type") or "event",
         "path": ev.get("path") or "",
         "detail": ev.get("detail") or ev.get("path") or "",
-        "confidence": float(ev.get("confidence", 1.0)),
+        "confidence": confidence,
     }
 
 
@@ -119,7 +124,11 @@ def merge_events(
             skipped += 1
             continue
         if "file" in src and src.get("file"):
-            events, label = _events_from_observation_file(src["file"])
+            try:
+                events, label = _events_from_observation_file(src["file"])
+            except Exception:
+                skipped += 1
+                continue
         elif "events" in src:
             label = src.get("source") or "inline"
             events = src.get("events") or []
@@ -134,7 +143,11 @@ def merge_events(
             if not isinstance(ev, dict):
                 skipped += 1
                 continue
-            ne = _norm_event(ev, label)
+            try:
+                ne = _norm_event(ev, label)
+            except Exception:
+                skipped += 1
+                continue
             if ne is None:
                 skipped += 1
                 continue

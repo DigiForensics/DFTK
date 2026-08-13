@@ -34,7 +34,7 @@ Then create a clean virtual environment and install the generated wheel:
 python -m venv clean-env
 # Windows: clean-env\\Scripts\\activate
 # POSIX:   source clean-env/bin/activate
-pip install dist/dftk-2.1.0-py3-none-any.whl
+pip install dist/dftk-3.1.0-py3-none-any.whl
 dftk --version
 dftk list
 ```
@@ -50,10 +50,10 @@ The included `publish.yml` workflow publishes only for version tags matching `v*
 Typical release:
 
 ```bash
-git tag v2.1.0
-git push origin v2.1.0
+git tag v3.1.0
+git push origin v3.1.0
 ```
 
 The workflow runs tests, builds both wheel and sdist, validates metadata, then publishes using GitHub OIDC / PyPI Trusted Publishing.
 
-PyPI distributions are immutable per filename/version. If a release is wrong after upload, fix it and publish a new version instead of trying to overwrite 2.1.0.
+PyPI distributions are immutable per filename/version. If a release is wrong after upload, fix it and publish a new version instead of trying to overwrite 3.1.0.

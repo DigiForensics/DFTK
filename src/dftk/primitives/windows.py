@@ -39,6 +39,7 @@ def registry_inventory(path:str,key_limit:int=10000,depth:int=2)->Observation:
         return Observation('windows.registry_inventory',Status.UNSUPPORTED,'python-registry is not installed',errors=['install dftk[windows] or python-registry'],meta={'source_sha256':sha256_file(p)})
     try:
         hive=RegistryModule.Registry(str(p)); root=hive.root()
+        h=sha256_file(p)
         rows=[]; ev=[]
         stack=[(root,0)]
         while stack and len(rows)<key_limit:
@@ -50,11 +51,11 @@ def registry_inventory(path:str,key_limit:int=10000,depth:int=2)->Observation:
                 if isinstance(value,bytes): value={'bytes_hex':value[:64].hex(),'length':len(value)}
                 vals.append({'name':v.name(),'type':v.value_type(),'value':value})
             row={'path':key.path(),'timestamp':key.timestamp().isoformat() if key.timestamp() else None,'value_count':len(key.values()),'subkey_count':len(key.subkeys()),'values':vals}
-            rows.append(row); ev.append(Evidence(str(p),'registry_key',key.path(),locator=key.path(),source_sha256=sha256_file(p),method='python-registry'))
+            rows.append(row); ev.append(Evidence(str(p),'registry_key',key.path(),locator=key.path(),source_sha256=h,method='python-registry'))
             if d<depth:
                 for child in reversed(key.subkeys()): stack.append((child,d+1))
         warnings=[f'key inventory limited to {key_limit}'] if len(rows)>=key_limit else []
-        return Observation('windows.registry_inventory',Status.OK,f'Inventoried {len(rows)} registry key(s)',facts={'root':root.path(),'keys':rows},evidence=ev[:300],warnings=warnings,meta={'source_sha256':sha256_file(p)})
+        return Observation('windows.registry_inventory',Status.OK,f'Inventoried {len(rows)} registry key(s)',facts={'root':root.path(),'keys':rows},evidence=ev[:300],warnings=warnings,meta={'source_sha256':h})
     except Exception as e:
         return Observation('windows.registry_inventory',Status.ERROR,'Registry parsing failed',errors=[f'{type(e).__name__}: {e}'],meta={'source_sha256':sha256_file(p)})
 

@@ -3,7 +3,7 @@
 [![CI](https://github.com/DigiForensics/DFTK/actions/workflows/ci.yml/badge.svg)](https://github.com/DigiForensics/DFTK/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org)
-[![PyPI](https://img.shields.io/badge/PyPI-dftk%20%C2%B7%20soon-lightgrey.svg)](#installation)
+[![PyPI](https://img.shields.io/pypi/v/dftk.svg)](https://pypi.org/project/dftk/)
 
 **Evidence-preserving forensic primitives and composable workflows for analysts, automation systems, and autonomous agents.**
 
@@ -122,6 +122,40 @@ dftk case run <case_id> timeline.file_metadata --params '{"root":"mnt/evidence"}
 dftk case timeline <case_id>
 ```
 
+
+### Native MCP for Agents
+
+DFTK 3.1 adds a native, local **stdio MCP** adapter. It is deliberately a thin protocol layer over the existing Registry / Observation / CaseSession APIs — not a second Agent runtime.
+
+Install the optional MCP dependency and start the server from the evidence root you intend to expose:
+
+```bash
+pip install "dftk[mcp]"
+cd /path/to/authorized/evidence-root
+dftk mcp
+```
+
+The MCP server exposes six meta-tools: health, capability search, describe, run, case management, and paged reading of persisted case runs. It defaults to `READ_ONLY`, network-off, stdio-only operation; the Agent cannot raise the safety ceiling or enable network access. `--root`, `--max-safety`, `--allow-network`, and timeout are server-owner launch decisions.
+
+For multi-step investigations, create a normal DFTK case and pass its `case_id` to MCP `dftk_run`; the Observation is persisted through the same `CaseSession` format used by the CLI.
+
+```bash
+dftk doctor
+dftk mcp --root . --workspace .dftk
+```
+
+
+### Agent Skill
+
+The standalone investigation guidance lives at `DigiForensics/DFTK-skill`. DFTK 3.1 bundles the matching release snapshot and installs the **entire** progressive-disclosure skill directory (not only `SKILL.md`):
+
+```bash
+dftk skill --install
+dftk skill --install --target kimi,workbuddy,agents
+```
+
+The Skill remains documentation/reasoning guidance; executable forensic capabilities remain in DFTK.
+
 ## Python / Agent API
 
 ```python
@@ -158,7 +192,7 @@ meta         tool and run metadata
 
 ## Capability model
 
-DFTK 3.0.0 contains a registry of **68 tools** (67 `READ_ONLY`, 1 `STATEFUL`) and **14 recipes** spanning:
+DFTK 3.1.0 contains a registry of **68 tools** (67 `READ_ONLY`, 1 `STATEFUL`) and **14 recipes** spanning:
 
 - artifact identification, hashing, strings, search and timeline;
 - APK, DEX, binary AXML, Android app data and endpoint extraction;
@@ -199,7 +233,7 @@ DFTK separates execution safety from forensic reasoning:
 |-------|----------|
 | `READ_ONLY` | reads evidence or immutable / read-only views |
 | `STATEFUL` | may write derived workspace output without changing source evidence |
-| `DESTRUCTIVE` | reserved for target-modifying actions; **not registered** in 3.0.0 |
+| `DESTRUCTIVE` | reserved for target-modifying actions; **not registered** in 3.1.0 |
 
 The default policy allows only `READ_ONLY` operations. Network access is independently gated and must be enabled with `--allow-network`. Controlled archive extraction (`archive.extract_safe`) is `STATEFUL` and blocked unless the caller explicitly raises the ceiling:
 
@@ -237,6 +271,7 @@ python -m twine check --strict dist/*
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — public tool boundary, evidence contract, primitive-vs-recipe, promotion rules.
 - [`CAPABILITIES.md`](CAPABILITIES.md) — full capability map by domain.
 - [`SAFETY.md`](SAFETY.md) — safety levels, network isolation, database/archive guards, specialist-parser semantics.
+- [`AGENT_INTEGRATION.md`](AGENT_INTEGRATION.md) — native stdio MCP and host-Agent integration examples.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to add a capability and open a PR.
 - [`SECURITY.md`](SECURITY.md) — vulnerability disclosure policy.
 - [`CHANGELOG.md`](CHANGELOG.md) — notable public changes.

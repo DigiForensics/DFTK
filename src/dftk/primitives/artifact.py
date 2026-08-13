@@ -86,7 +86,8 @@ def search_tree(path:str,query:str,regex:bool=False,case_sensitive:bool=False,ma
     if not root.exists(): return Observation('file.search_tree',Status.ERROR,'Path not found',errors=[str(root)])
     files=[root] if root.is_file() else bounded_files(root,max_files=max_files)
     flags=0 if case_sensitive else re.IGNORECASE
-    rx=re.compile(query.encode('utf-8'),flags) if regex else None
+    try: rx=re.compile(query.encode('utf-8'),flags) if regex else None
+    except re.error as e: return Observation('file.search_tree',Status.ERROR,'Invalid regular expression',errors=[str(e)])
     needle=query.encode('utf-8') if case_sensitive else query.lower().encode('utf-8')
     matches=[]; ev=[]; scanned=0; skipped=0
     for f in files:

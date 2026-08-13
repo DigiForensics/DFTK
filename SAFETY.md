@@ -8,7 +8,7 @@ The default execution policy is evidence-preserving and offline.
 - `STATEFUL` — writes only to a derived workspace or otherwise changes runtime state without modifying the source evidence.
 - `DESTRUCTIVE` — writes / deletes target evidence, rewrites configuration, stops / starts services, installs software, pulls / runs containers or exposes arbitrary target-shell mutation.
 
-DFTK 2.1 registers **65 READ_ONLY**, **1 STATEFUL** and **0 DESTRUCTIVE** tools.
+DFTK 3.1 registers the same 68-tool capability surface as 3.0: **67 READ_ONLY**, **1 STATEFUL** and **0 DESTRUCTIVE** tools.
 
 The one stateful tool, `archive.extract_safe`, writes to an explicit output directory and is blocked under the default policy. It applies path-traversal, member-count and expanded-size checks and does not modify the source archive.
 
@@ -33,3 +33,11 @@ When `python-registry`, `python-evtx`, `pyewf`, `pytsk3`, `dkimpy`, `pyspf` or `
 ## Legacy scripts
 
 The original competition archive is retained only for provenance and knowledge mining. It is not imported by the registry. Historical scripts that contain credentials, target addresses, fixed challenge entities or state-changing commands must not be exposed to an autonomous Agent.
+
+## MCP policy boundary
+
+`dftk mcp` is local stdio-only in 3.1. The server defaults to `READ_ONLY` with network disabled. The host process owner may deliberately launch with `--max-safety STATEFUL` and/or `--allow-network`; these controls are not exposed as model-callable MCP arguments, and `DESTRUCTIVE` is never an accepted MCP ceiling.
+
+The server also owns an explicit filesystem `--root`. Path-like capability parameters are checked before execution and must remain inside that root. The MCP workspace must also live beneath the root. This is an Agent integration guard; it does not replace normal examiner authorization or OS-level isolation.
+
+Primitive execution occurs in a child process with a hard timeout. This protects MCP stdio framing from parser stdout/stderr and prevents a stuck parser from indefinitely blocking the server. Case-scoped execution is serialized because the existing `CaseSession` manifest update is intentionally simple and file-based.
