@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org)
 [![PyPI](https://img.shields.io/pypi/v/dftk.svg)](https://pypi.org/project/dftk/)
 
-DFTK is a capability layer for digital forensics. It exposes read-only, structured forensic operations you can call from the CLI or compose inside a higher-level Agent / TaskGraph runtime. Every operation returns one `Observation` that carries an explicit status, machine-readable facts, and evidence traced back to its source.
+DFTK is a Python toolkit that exposes read-only, structured forensic operations. You can call them from the CLI or compose them inside a higher-level Agent / TaskGraph runtime. Every operation returns one `Observation` that carries an explicit status, machine-readable facts, and evidence traced back to its source.
 
 > 🇨🇳 中文文档：[README.zh-CN.md](README.zh-CN.md)
 
@@ -18,12 +18,12 @@ DFTK is a capability layer for digital forensics. It exposes read-only, structur
 
 ## What DFTK is (and isn't)
 
-DFTK is not an autonomous forensic agent. It is a library of stable, structured operations; you drive it, it does not investigate on its own. Each operation returns a normalized `Observation` so the calling system gets facts and sourced evidence instead of console text to parse.
+DFTK is not an autonomous forensic agent. It is a library of structured operations; you drive it, it does not investigate on its own. Each operation returns a normalized `Observation` so the calling system gets facts and sourced evidence instead of console text to parse.
 
 ## Why DFTK
 
-- **Read-only by default.** Nothing touches source evidence unless you explicitly raise the safety ceiling.
-- **Zero mandatory dependencies.** The base package installs anywhere with no third-party runtime requirements. Optional parsers (E01/TSK, Windows Registry/EVTX, DKIM/SPF, SSH) report `unsupported` when their dependency is missing, instead of guessing.
+- **Read-only by default.** Read-only tools open evidence without modifying it. Operations that write derived output require the caller to select an explicit `STATEFUL` or `DESTRUCTIVE` safety level.
+- **Zero mandatory dependencies.** The base package has no mandatory third-party runtime dependencies. Optional parsers (E01/TSK, Windows Registry/EVTX, DKIM/SPF, SSH) report `unsupported` when their dependency is missing, instead of guessing.
 - **One registry, 68 tools.** Each tool declares its parameters, safety level, semantic tags, network needs, and produced-evidence types, so a planner can pick the right tool from an evidence requirement.
 - **Safety enforced in one place.** `READ_ONLY < STATEFUL < DESTRUCTIVE`; no registered tool is `DESTRUCTIVE`. Network access is gated behind an explicit opt-in.
 
@@ -215,7 +215,7 @@ DFTK 3.1.0 contains a registry of **68 tools** (67 `READ_ONLY`, 1 `STATEFUL`) an
 
 ### Case correlation & unified timeline
 
-`timeline.merge` normalizes and correlates time-bearing events from multiple dftk tool outputs (or inline sources) into one sorted, source-attributed timeline. It is useful for fusing filesystem metadata, authentication logs and browser history.
+`timeline.merge` normalizes and correlates time-bearing events from multiple dftk tool outputs (or inline sources) into one sorted, source-attributed timeline. It correlates filesystem metadata, authentication logs, and browser history into a single source-attributed sequence.
 
 `dftk case` wraps the read-only tools into an isolated investigation session. It records each run's `Observation` under a workspace (`.dftk/cases/<id>/`) and can correlate them into a single timeline or export a report:
 
