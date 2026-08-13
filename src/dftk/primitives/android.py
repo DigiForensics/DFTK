@@ -324,7 +324,8 @@ def _apk_signing_block(data:bytes)->dict:
 def apk_signing_inventory(path:str)->Observation:
     p=Path(path)
     if not p.is_file() or not zipfile.is_zipfile(p): return Observation('android.apk_signing_inventory',Status.UNSUPPORTED,'Input is not an APK/ZIP')
-    data,err=read_file_bounded_observation('android.apk_signing_inventory',p,1024*1024*1024); if err: return err
+    data,err=read_file_bounded_observation('android.apk_signing_inventory',p,1024*1024*1024)
+    if err: return err
     block=_apk_signing_block(data)
     with zipfile.ZipFile(p) as z:
         names=z.namelist(); v1=[n for n in names if n.upper().startswith('META-INF/') and n.upper().endswith(('.RSA','.DSA','.EC','.SF'))]
