@@ -9,6 +9,7 @@ import sys
 from typing import Any
 
 from .catalog import load_builtin_tools
+from .core.external_tools import detect_external_tools, _resolve_binary
 from .core.registry import registry
 
 _OPTIONAL_IMPORTS = {
@@ -28,6 +29,7 @@ def _dist_version(name: str) -> str | None:
         return importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError:
         return None
+
 
 
 def doctor_report() -> dict[str, Any]:
@@ -56,6 +58,8 @@ def doctor_report() -> dict[str, Any]:
         toolkit_version = _dist_version("dftk") or "unknown"
 
     mcp_version = _dist_version("mcp")
+    external = detect_external_tools()
+    external_available = sum(1 for t in external if t["available"])
     return {
         "ok": True,
         "toolkit": "dftk",
@@ -76,4 +80,9 @@ def doctor_report() -> dict[str, Any]:
             "ready": mcp_version == "2.0.0",
         },
         "optional": optional,
+        "external": {
+            "available": external_available,
+            "total": len(external),
+            "tools": external,
+        },
     }

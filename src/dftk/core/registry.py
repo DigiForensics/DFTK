@@ -18,6 +18,7 @@ from typing import Any
 from dataclasses import replace
 from .models import Observation, Status, ToolSpec, SafetyLevel
 from .safety import SafetyPolicy, SafetyViolation
+from .external_tools import external_tool_available, EXTERNAL_TOOL_NAMES
 
 ToolFunc = Callable[..., Observation]
 
@@ -74,6 +75,17 @@ class ToolRegistry:
             policy.check(level=spec.safety, network=spec.network)
         except SafetyViolation as e:
             return Observation(name, Status.BLOCKED, "Blocked by safety policy", errors=[str(e)])
+        for dep in spec.requires:
+            if dep in EXTERNAL_TOOL_NAMES and not external_tool_available(dep):
+                return Observation(
+                    name,
+                    Status.UNSUPPORTED,
+                    f"Required external tool not available: {dep}",
+                    errors=[
+                        f"tool '{name}' requires external binary '{dep}', which was not "
+                        f"found on PATH or via its DFTK_*_TOOL_DIRS directory"
+                    ],
+                )
         try:
             out = self._funcs[name](**params)
             if not isinstance(out, Observation):
