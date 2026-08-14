@@ -1,0 +1,17 @@
+# Claim card
+
+One claim per card. Keep answers out of shared skill copies; embed only in
+private case notes.
+
+```
+claim:        <what was asked>
+evidence:     <exact filter + field/stream that yielded the value>
+capability:   <tshark / scapy>
+method/hash:  <sha256 of the capture when available>
+verification: VERIFIED | SUPPORTED | CANDIDATE | UNRESOLVED | UNSUPPORTED
+reasoning:    why this evidence proves the requested claim
+limitations:  only when material
+```
+
+For competition-style multi-question tasks, preserve the original numbering and
+do not bury the exact answer inside prose.
