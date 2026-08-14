@@ -35,6 +35,8 @@ Prefer **DFTK MCP** when the host Agent exposes these tools:
 
 MCP is the preferred Agent interface because policy, evidence-root scope, timeout, and output bounding are controlled by the DFTK server rather than by model-generated shell text.
 
+**External toolchain discovery.** `dftk_doctor` reports which external forensic binaries (jadx, apktool, tshark, ghidra, radare2, …) are present on the host in an `external` section — pure discovery, no execution. If a tool depends on one, declare it via `requires=("jadx",)`; `dftk_run` returns `unsupported` when the binary is absent (resolved on PATH or via its `DFTK_<DOMAIN>_TOOL_DIRS` env dir). Prefer this over blindly invoking binaries from shell text.
+
 If MCP is unavailable, use the existing DFTK CLI:
 
 ```text
