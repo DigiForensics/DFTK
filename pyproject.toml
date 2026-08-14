@@ -65,12 +65,5 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 dftk = [
-  "SKILL.md",
   "data/*.txt",
-  "skill/*.md",
-  "skill/LICENSE",
-  "skill/references/*.md",
-  "skill/references/domains/*.md",
-  "skill/examples/*.md",
-  "skill/templates/*.md",
 ]

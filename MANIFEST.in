@@ -10,7 +10,6 @@ include PUBLISHING.md
 include LICENSE
 recursive-include examples *.json
 recursive-include tests *.py
-recursive-include src/dftk/skill *
 prune legacy
 global-exclude __pycache__ *.py[cod] .DS_Store
 

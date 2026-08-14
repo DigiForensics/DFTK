@@ -15,13 +15,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 from .catalog import load_builtin_tools
 from .core.models import SafetyLevel
 from .core.registry import registry
 from .core.safety import SafetyPolicy
-from .skill_bundle import bundled_skill_root, install_bundled_skill
+from .skill_bundle import (
+    SKILL_REPO_WEB,
+    fetch_skill_repo,
+    install_from_repo_root,
+    install_skill,
+)
 
 from . import __version__ as TOOLKIT_VERSION  # single source of truth; never hardcode
 
@@ -89,23 +95,23 @@ def _resolve_targets(spec):
 
 
 def _cmd_skill(args):
-    skill_root = bundled_skill_root()
-    try:
-        main_skill = skill_root / "SKILL.md"
-        if not main_skill.is_file():
-            raise FileNotFoundError("SKILL.md missing")
-    except Exception:
-        _emit({"error": "DFTK skill bundle is not present in this install"})
-        return 2
-
     if not getattr(args, "install", False):
-        print(str(main_skill))
+        print(SKILL_REPO_WEB)
+        print("Install with: dftk skill --install   (use --ref to pin a version)")
         return 0
 
+    ref = getattr(args, "ref", None)
     custom = getattr(args, "dir", None)
+
     if custom:
-        dest = install_bundled_skill(custom)
-        print(f"installed DFTK skill bundle -> {dest}")
+        try:
+            installed = install_skill(ref, custom)
+        except Exception as exc:  # noqa: BLE001
+            _emit({"error": f"failed to fetch/install DFTK skill: {exc}"})
+            return 2
+        for path in installed:
+            print(f"installed -> {path}")
+        print(f"\nInstalled DFTK skill + standalone skills into {custom}")
         return 0
 
     try:
@@ -115,21 +121,27 @@ def _cmd_skill(args):
         return 2
 
     home = Path.home()
-    installed = []
-    for target in targets:
-        dest = home / AGENT_SKILL_DIRS[target] / "dftk"
-        try:
-            install_bundled_skill(dest)
-            installed.append(str(dest))
-        except OSError as exc:
-            print(f"  skipped {target}: {exc}")
-    for path in installed:
+    installed_all: list[Path] = []
+    repo_root = None
+    try:
+        repo_root = fetch_skill_repo(ref)
+        for target in targets:
+            base = home / AGENT_SKILL_DIRS[target]
+            installed_all.extend(install_from_repo_root(repo_root, base))
+    except Exception as exc:  # noqa: BLE001
+        _emit({"error": f"failed to fetch/install DFTK skill: {exc}"})
+        return 2
+    finally:
+        if repo_root is not None:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    for path in installed_all:
         print(f"installed -> {path}")
-    if not installed:
+    if not installed_all:
         _emit({"error": "no skill directories could be written"})
         return 1
     print(
-        f"\nInstalled complete DFTK skill bundle for {len(installed)} "
+        f"\nInstalled DFTK skill + standalone skills for {len(targets)} "
         f"agent target(s): {', '.join(targets)}"
     )
     return 0
@@ -250,8 +262,8 @@ def main(argv=None):
 
     doctor = sub.add_parser("doctor", help="check DFTK runtime, capabilities and optional integrations")
 
-    skill = sub.add_parser("skill", help="show/install the complete bundled DFTK Agent Skill")
-    skill.add_argument("--install", action="store_true", help="install the whole skill bundle into Agent skill directories")
+    skill = sub.add_parser("skill", help="show/install the DFTK Agent Skill (fetched from GitHub)")
+    skill.add_argument("--install", action="store_true", help="fetch the DFTK-skill repo and install the main skill + standalone analysis skills")
     skill.add_argument(
         "--target",
         default="all",
@@ -261,7 +273,8 @@ def main(argv=None):
             "(workbuddy,codebuddy,kimi,claude,codex,hermes,agents,cursor,gemini)"
         ),
     )
-    skill.add_argument("--dir", metavar="DIR", help="install into a custom directory instead of known Agent targets")
+    skill.add_argument("--dir", metavar="DIR", help="install into a custom skills base directory instead of known Agent targets")
+    skill.add_argument("--ref", metavar="REF", help="pin the DFTK-skill ref (tag/branch/sha); default: v<dftk version>")
 
     case = sub.add_parser("case", help="build and correlate an investigation case / unified timeline")
     case.add_argument("--workspace", default=".dftk", metavar="DIR", help="case workspace root (default: .dftk)")
