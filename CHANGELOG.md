@@ -2,6 +2,13 @@
 
 All notable public changes to DFTK are recorded here.
 
+## 3.1.1 — Native Windows host-artifact tools and pcap enrichment
+
+- Added native, dependency-free Windows host-artifact tools: `windows.mft` (NTFS $MFT path rebuild, SI/FN timestamps, flags, size), `windows.prefetch` (.pf v17/23/26/30 executable, hash, run count, last run, referenced files), `windows.lnk` (target, timestamps, TrackerDataBlock machine/MAC), `windows.recyclebin` (Recycle Bin $I original name, size, deletion time, paired $R).
+- Enriched `network.capture_protocols` with DNS answer records (A/AAAA, CNAME) and HTTP responses (status, reason, Server).
+- Moved the DFTK Agent Skill out of the pip package; `dftk skill --install` now fetches the standalone `DFTK-skill` repository at the matching version tag and installs the main skill plus standalone analysis skills.
+- Tool count is now 72 (was 68).
+
 ## 3.1.0 — Native MCP and complete Agent Skill bundle
 
 - Added native local stdio MCP as a thin adapter over the existing ToolRegistry, Observation and CaseSession interfaces.
