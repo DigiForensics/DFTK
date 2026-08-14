@@ -159,6 +159,47 @@ def _dns_questions(payload:bytes):
         out.append({'name':name,'type':qtype,'class':qclass})
     return out
 
+def _parse_dns(payload:bytes):
+    """Return (questions, answers) from a DNS message. Answers carry resolved
+    A/AAAA addresses and CNAME targets, which is what links a queried name to an IP."""
+    if len(payload)<12: return [], []
+    qd=struct.unpack_from('!H',payload,4)[0]; an=struct.unpack_from('!H',payload,6)[0]; off=12
+    questions=[]
+    for _ in range(min(qd,50)):
+        name,off=_dns_name(payload,off)
+        if off+4>len(payload): break
+        qtype,qclass=struct.unpack_from('!HH',payload,off); off+=4
+        questions.append({'name':name,'type':qtype,'class':qclass})
+    answers=[]
+    for _ in range(min(an,200)):
+        if off+10>len(payload): break
+        name,off=_dns_name(payload,off)
+        atype,aclass=struct.unpack_from('!HH',payload,off); ttl=struct.unpack_from('!I',payload,off+4)[0]; rdlen=struct.unpack_from('!H',payload,off+8)[0]; off+=10
+        if off+rdlen>len(payload): break
+        rdata=payload[off:off+rdlen]; off+=rdlen
+        rec={'name':name,'type':atype,'ttl':ttl}
+        if atype==1 and rdlen==4:
+            rec['address']=socket.inet_ntoa(rdata)
+        elif atype==28 and rdlen==16:
+            rec['address']=':'.join(f'{rdata[i:i+2].hex()}' for i in range(0,16,2))
+        elif atype==5:
+            cn,_=_dns_name(rdata,0); rec['cname']=cn
+        answers.append(rec)
+    return questions, answers
+
+_RE_HTTP_RESP=re.compile(rb'HTTP/(1\.[01]) (\d{3}) ([^\r\n]*)')
+def _http_response(payload:bytes):
+    if not payload: return None
+    m=_RE_HTTP_RESP.search(payload)
+    if not m: return None
+    headers={}
+    text=payload[:16384].decode('iso-8859-1','replace')
+    for line in text.split('\r\n')[1:]:
+        if not line: break
+        if ':' in line:
+            k,v=line.split(':',1); headers[k.strip().lower()]=v.strip()
+    return {'status':m.group(2).decode(),'reason':m.group(3).decode('iso-8859-1','replace'),'server':headers.get('server')}
+
 def _http_request(payload:bytes):
     if not payload: return None
     head=payload[:16384]
@@ -238,7 +279,7 @@ def capture_protocols(path:str,packet_limit:int=200000,limit:int=5000)->Observat
     if not p.is_file(): return Observation('network.capture_protocols',Status.ERROR,'Capture not found',errors=[str(p)])
     data,err=read_file_bounded_observation('network.capture_protocols',p,4*1024*1024*1024)
     if err: return err
-    dns=[]; http=[]; tls=[]; warnings=[]; count=0
+    dns=[]; dns_ans=[]; http=[]; http_resp=[]; tls=[]; warnings=[]; count=0
     try: packets,fmt=_capture_packets(data,packet_limit)
     except PcapError as e: return Observation('network.capture_protocols',Status.UNSUPPORTED,'Unsupported capture',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
     try:
@@ -249,19 +290,28 @@ def capture_protocols(path:str,packet_limit:int=200000,limit:int=5000)->Observat
             if not ip: continue
             ports={ip['src_port'],ip['dst_port']}; payload=ip['payload']
             if ip['proto']==17 and 53 in ports:
-                for q in _dns_questions(payload):
+                questions,answers=_parse_dns(payload)
+                for q in questions:
                     dns.append({'packet':num,'time':ts,'src':ip['src'],'dst':ip['dst'],**q})
+                for a in answers:
+                    dns_ans.append({'packet':num,'time':ts,'src':ip['src'],'dst':ip['dst'],**a})
             elif ip['proto']==6:
                 req=_http_request(payload)
                 if req: http.append({'packet':num,'time':ts,'src':ip['src'],'dst':ip['dst'],**req})
+                resp=_http_response(payload)
+                if resp: http_resp.append({'packet':num,'time':ts,'src':ip['src'],'dst':ip['dst'],**resp})
                 sni=_tls_sni(payload)
                 if sni: tls.append({'packet':num,'time':ts,'src':ip['src'],'dst':ip['dst'],'server_name':sni})
-            if len(dns)+len(http)+len(tls)>=limit: break
+            if len(dns)+len(dns_ans)+len(http)+len(http_resp)+len(tls)>=limit: break
     except PcapError as e:
         warnings.append(str(e))
-    if len(dns)+len(http)+len(tls)>=limit: warnings.append(f'protocol findings limited to {limit}')
+    if len(dns)+len(dns_ans)+len(http)+len(http_resp)+len(tls)>=limit: warnings.append(f'protocol findings limited to {limit}')
     ev=[]
     for r in dns[:100]: ev.append(Evidence(str(p),'dns_query',r['name'],locator=f"packet:{r['packet']}",method='DNS question parser'))
+    for r in dns_ans[:100]:
+        val=r.get('address') or r.get('cname') or f"type {r.get('type')}"
+        ev.append(Evidence(str(p),'dns_answer',f"{r['name']} -> {val}",locator=f"packet:{r['packet']}",method='DNS answer parser'))
     for r in http[:100]: ev.append(Evidence(str(p),'http_request',f"{r['method']} {r['host'] or ''}{r['target']}",locator=f"packet:{r['packet']}",method='HTTP/1 request parser'))
+    for r in http_resp[:100]: ev.append(Evidence(str(p),'http_response',f"{r['status']} {r.get('server') or ''}",locator=f"packet:{r['packet']}",method='HTTP/1 response parser'))
     for r in tls[:100]: ev.append(Evidence(str(p),'tls_sni',r['server_name'],locator=f"packet:{r['packet']}",method='TLS ClientHello parser'))
-    return Observation('network.capture_protocols',Status.PARTIAL if warnings else Status.OK,f'Extracted {len(dns)} DNS, {len(http)} HTTP and {len(tls)} TLS SNI finding(s)',facts={'format':fmt,'dns_questions':dns,'http_requests':http,'tls_sni':tls,'packets_scanned':count},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
+    return Observation('network.capture_protocols',Status.PARTIAL if warnings else Status.OK,f'Extracted {len(dns)} DNS q, {len(dns_ans)} DNS ans, {len(http)} HTTP req, {len(http_resp)} HTTP resp, {len(tls)} TLS SNI',facts={'format':fmt,'dns_questions':dns,'dns_answers':dns_ans,'http_requests':http,'http_responses':http_resp,'tls_sni':tls,'packets_scanned':count},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})

@@ -19,7 +19,7 @@ import dftk
 
 def test_public_registry_and_run_tool(tmp_path):
     reg=dftk.get_registry()
-    assert len(reg.specs()) == 68
+    assert len(reg.specs()) == 72
     assert reg.get('artifact.inspect').safety.name == 'READ_ONLY'
 
     db=tmp_path/'public-api.db'
