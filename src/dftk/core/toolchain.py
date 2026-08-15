@@ -41,7 +41,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .external_tools import _EXTERNAL_TOOLS
+from .external_tools import _EXTERNAL_TOOLS, _looks_runnable
 
 _DEFAULT_BIN_SUBDIR = "bin"
 _CONFIG_NAME = "toolchain.json"
@@ -107,7 +107,7 @@ def _find_real_binary(root: Path, entry: dict[str, Any]) -> str | None:
             names = [cand] + [cand + e for e in exts if not cand.lower().endswith(e)]
             for n in names:
                 fp = d / n
-                if fp.is_file() and os.access(fp, os.X_OK):
+                if fp.is_file() and _looks_runnable(fp):
                     return str(fp)
     return None
 

@@ -125,6 +125,26 @@ _EXTERNAL_TOOLS: list[dict[str, Any]] = [
 # Names a tool may reference in `requires` to declare an external dependency.
 EXTERNAL_TOOL_NAMES: frozenset[str] = frozenset(t["name"] for t in _EXTERNAL_TOOLS)
 
+# Windows-launcher script types are "executable by association" on the host OS
+# that ships the forensic-toolkit bundle, so their mere presence is sufficient
+# for discovery. They will not carry the POSIX execute bit when the bundle is
+# unpacked on a *nix CI host, so requiring os.X_OK there would wrongly hide
+# them. Native binaries (.exe) and extensionless scripts still need the execute
+# bit to be considered runnable.
+_LAUNCHER_EXTS: tuple[str, ...] = (".bat", ".cmd", ".ps1")
+
+
+def _looks_runnable(path: str | os.PathLike[str]) -> bool:
+    """True if ``path`` is a present, runnable tool binary.
+
+    Launcher scripts (.bat/.cmd/.ps1) are runnable by association and need no
+    POSIX execute bit; everything else must carry the execute bit.
+    """
+    ext = os.path.splitext(str(path))[1].lower()
+    if ext in _LAUNCHER_EXTS:
+        return True
+    return os.access(path, os.X_OK)
+
 # Human-readable labels for the `source` field reported by detection.
 _SOURCE_LABELS = {
     "PATH": "PATH",
@@ -235,7 +255,7 @@ def _resolve_binary(
             names = [cand] + [cand + e for e in exts if not cand.lower().endswith(e)]
             for n in names:
                 fp = os.path.join(d, n)
-                if os.path.isfile(fp) and os.access(fp, os.X_OK):
+                if os.path.isfile(fp) and _looks_runnable(fp):
                     return fp, source
     return None, None
 
