@@ -38,10 +38,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the public tool boundary, evidence co
 ## Before opening a release PR
 
 ```bash
-pytest -q
+pytest -q --cov=dftk --cov-report=term-missing --cov-fail-under=60
 python -m build
 python -m twine check --strict dist/*
 ```
+
+CI runs the suite with the same coverage floor (`--cov-fail-under=60`), so a PR that drops coverage below it fails. Raise the floor in `.github/workflows/ci.yml` when the real number moves up durably; do not lower it to make a change pass.
 
 ## Pull request expectations
 

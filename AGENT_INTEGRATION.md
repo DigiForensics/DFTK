@@ -68,6 +68,15 @@ dftk mcp --root /cases/2026-001 --allow-network
 
 The model cannot pass those policy switches through `dftk_run`.
 
+To keep a chain-of-custody record of everything the Agent executed, add `--audit`:
+
+```bash
+dftk mcp --root /cases/2026-001 --audit                       # .dftk/audit.jsonl
+dftk mcp --root /cases/2026-001 --audit /cases/2026-001/audit.jsonl
+```
+
+Each capability run the Agent triggers appends one JSONL line (timestamp, tool, caller, parameters with secrets masked, safety level, status, evidence hashes, errors). Like the policy switches, this is a server-owner setting and not a model-callable argument.
+
 ## Kimi Code
 
 Kimi supports project-level `.kimi-code/mcp.json` and stdio MCP. Example:
@@ -122,7 +131,7 @@ TRAE supports stdio MCP. In TRAE Settings → MCP, add a custom server using the
 }
 ```
 
-For the Skill, import/copy the complete `DFTK-skill` directory according to TRAE's Agent Skills UI/workspace mechanism. Do not reduce it to a single `SKILL.md`, because 3.1 uses progressive `references/`.
+For the Skill, import/copy the complete `DFTK-skill` directory according to TRAE's Agent Skills UI/workspace mechanism. Do not reduce it to a single `SKILL.md`, because the skill uses progressive `references/`.
 
 ## WorkBuddy / CodeBuddy
 

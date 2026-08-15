@@ -55,13 +55,19 @@ Question / AnswerIntent / EvidenceRequirement
 
 The registry propagates a known source SHA-256 from observation metadata into evidence items that do not already carry one. This gives an upper-layer EvidenceStore enough provenance to construct immutable evidence nodes without scraping terminal output.
 
+## Audit ledger boundary
+
+`core/audit.ToolAuditLog` is an optional append-only JSONL side record wired into the single `registry.run` funnel, so every execution path — CLI, recipe, `CaseSession`, MCP worker — is covered by one implementation rather than per-caller logging.
+
+The ledger sits strictly outside the evidence contract. It records provenance *about* a run (timestamp, tool, caller, parameters, safety level, status, evidence hashes, errors) and never participates in producing `Evidence`. It is failure-tolerant by design: serialization or I/O errors are swallowed, because an unavailable ledger must not change the outcome of an examination. This asymmetry is intentional — evidence integrity outranks bookkeeping completeness.
+
 ## Safety model
 
 `READ_ONLY < STATEFUL < DESTRUCTIVE`.
 
-The default policy allows only `READ_ONLY` and disallows network traffic. In 3.1:
+The default policy allows only `READ_ONLY` and disallows network traffic. Currently:
 
-- 67 tools are `READ_ONLY` (68 registered in total);
+- 71 tools are `READ_ONLY` (72 registered in total);
 - `archive.extract_safe` is `STATEFUL` because it writes a derived workspace while leaving the source archive unchanged;
 - no registered tool is `DESTRUCTIVE`;
 - network-capable tools are separately gated.

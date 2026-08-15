@@ -132,7 +132,7 @@ dftk case timeline <case_id>
 
 ### 原生 MCP（Agent 接入）
 
-DFTK 3.1 新增原生本地 **stdio MCP** 接口。它只是现有 Registry / Observation / CaseSession 之上的协议适配层，不实现另一套 Agent 运行时。
+DFTK 提供原生本地 **stdio MCP** 接口。它只是现有 Registry / Observation / CaseSession 之上的协议适配层，不实现另一套 Agent 运行时。
 
 ```bash
 pip install "dftk[mcp]"
@@ -147,7 +147,7 @@ MCP 默认 `READ_ONLY`、禁止网络、仅使用 stdio，并只暴露 6 个元�
 
 ### Agent Skill
 
-独立的取证推理指引位于 `DigiForensics/DFTK-skill`。DFTK 3.1 内置了对齐版本的快照，并会安装**整个**渐进式 skill 目录（不只 `SKILL.md`）：
+独立的取证推理指引位于 `DigiForensics/DFTK-skill`，它不随 pip 包分发；`dftk skill --install` 会按你所安装 DFTK 版本对应的 tag 拉取该仓库，并安装**整个**渐进式 skill 目录（不只 `SKILL.md`）：
 
 ```bash
 dftk skill --install
@@ -245,6 +245,25 @@ dftk run archive.extract_safe \
 
 完整细节——数据库访问、归档防护、专业解析器语义、遗留脚本策略——见 [`SAFETY.md`](SAFETY.md)。
 
+## 证据链审计日志
+
+任何一次能力调用都可以向 JSONL 审计台账追加一条记录，事后即可重建整个分析过程的来源链：
+
+```bash
+dftk run file.hash --params '{"path":"evidence/disk.img"}' --audit case-01/audit.jsonl
+dftk recipe recipe.triage.file --params '{"path":"evidence/sample.bin"}' --audit case-01/audit.jsonl
+dftk case run 2026-0001 windows.prefetch --params '{"path":"C:/Windows/Prefetch"}' --audit case-01/audit.jsonl
+dftk mcp --root ./evidence --audit          # 不带路径时默认写入 .dftk/audit.jsonl
+```
+
+若希望整个会话的每次调用都记录、而不必每条命令都带参数，设置环境变量即可：
+
+```bash
+export DFTK_AUDIT_LOG=case-01/audit.jsonl
+```
+
+每行记录 UTC 时间戳、工具名、调用方、实际参数、安全级别、网络标志、状态、摘要、证据 SHA-256 哈希与错误信息。形似机密的参数键（`password`、`token`、`api_key` 等）会被掩码，过长字符串会被截断。台账只是旁路记录：它绝不修改证据，且台账写入失败绝不会中断检验。
+
 ## 支持的 Python 版本
 
 DFTK 支持跨平台的 **CPython 3.10+**。已在 3.10、3.11、3.12、3.13 上验证。
@@ -257,6 +276,12 @@ cd DFTK
 python -m venv .venv
 python -m pip install -e ".[dev]"
 pytest -q
+```
+
+CI 强制执行覆盖率下限。本地复现该门禁：
+
+```bash
+pytest -q --cov=dftk --cov-report=term-missing --cov-fail-under=60
 ```
 
 构建分发包（供维护者）：

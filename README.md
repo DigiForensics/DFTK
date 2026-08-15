@@ -134,7 +134,7 @@ dftk case timeline <case_id>
 
 ### Native MCP for Agents
 
-DFTK 3.1 adds a native local **stdio MCP** adapter. It is a thin protocol layer over the existing Registry / Observation / CaseSession APIs, not a second Agent runtime.
+DFTK ships a native local **stdio MCP** adapter. It is a thin protocol layer over the existing Registry / Observation / CaseSession APIs, not a second Agent runtime.
 
 Install the optional MCP dependency and start the server from the evidence root you intend to expose:
 
@@ -151,7 +151,7 @@ For multi-step investigations, create a normal DFTK case and pass its `case_id` 
 
 ### Agent Skill
 
-The standalone investigation guidance lives at `DigiForensics/DFTK-skill`. DFTK 3.1 bundles the matching release snapshot and installs the **entire** progressive-disclosure skill directory (not only `SKILL.md`):
+The standalone investigation guidance lives at `DigiForensics/DFTK-skill`. It is not shipped inside the pip package; `dftk skill --install` fetches the repository at the tag matching your installed DFTK version and installs the **entire** progressive-disclosure skill directory (not only `SKILL.md`):
 
 ```bash
 dftk skill --install
@@ -249,6 +249,25 @@ dftk run archive.extract_safe \
 
 Full details on database access, archive guards, specialist-parser semantics and the legacy-script policy are in [`SAFETY.md`](SAFETY.md).
 
+## Chain-of-custody audit log
+
+Any capability run can append a record to a JSONL audit ledger, so the provenance of an analysis can be reconstructed afterwards:
+
+```bash
+dftk run file.hash --params '{"path":"evidence/disk.img"}' --audit case-01/audit.jsonl
+dftk recipe recipe.triage.file --params '{"path":"evidence/sample.bin"}' --audit case-01/audit.jsonl
+dftk case run 2026-0001 windows.prefetch --params '{"path":"C:/Windows/Prefetch"}' --audit case-01/audit.jsonl
+dftk mcp --root ./evidence --audit          # defaults to .dftk/audit.jsonl
+```
+
+To log every run in a session without passing the flag each time, set the environment variable:
+
+```bash
+export DFTK_AUDIT_LOG=case-01/audit.jsonl
+```
+
+Each line records the UTC timestamp, tool name, caller, resolved parameters, safety level, network flag, status, summary, evidence SHA-256 hashes and errors. Parameter keys that look like secrets (`password`, `token`, `api_key`, …) are masked and oversized strings are truncated. The ledger is a side record only: it never modifies evidence, and a ledger write failure never interrupts the examination.
+
 ## Supported Python versions
 
 DFTK supports **CPython 3.10+** on platform-independent builds. Verified on 3.10, 3.11, 3.12 and 3.13.
@@ -261,6 +280,12 @@ cd DFTK
 python -m venv .venv
 python -m pip install -e ".[dev]"
 pytest -q
+```
+
+CI enforces a coverage floor. To reproduce that gate locally:
+
+```bash
+pytest -q --cov=dftk --cov-report=term-missing --cov-fail-under=60
 ```
 
 Build distributions (for maintainers):

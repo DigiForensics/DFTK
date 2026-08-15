@@ -36,9 +36,13 @@ def file_hash(path: str, algorithms: list[str] | None = None) -> Observation:
         return Observation("file.hash", Status.ERROR, "Input is not a file", errors=[str(p)])
     algorithms=algorithms or ["sha256"]
     hashes=hash_file(p, algorithms)
+    # Publish the SHA-256 as observation provenance so the registry can stamp it
+    # onto evidence items (and the audit ledger can record it). Only do this when
+    # SHA-256 was actually requested; never synthesize a hash that was not computed.
+    meta={"source_sha256":hashes["sha256"]} if "sha256" in hashes else {}
     return Observation("file.hash", Status.OK, f"Computed {len(hashes)} hash value(s)",
         facts={"path":str(p),"size":p.stat().st_size,"hashes":hashes},
-        evidence=[Evidence(str(p),"file",hashes,locator="bytes:0-")])
+        evidence=[Evidence(str(p),"file",hashes,locator="bytes:0-")], meta=meta)
 
 @registry.tool(
     name="file.strings",

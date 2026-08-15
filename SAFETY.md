@@ -8,7 +8,7 @@ The default execution policy is evidence-preserving and offline.
 - `STATEFUL` — writes only to a derived workspace or otherwise changes runtime state without modifying the source evidence.
 - `DESTRUCTIVE` — writes / deletes target evidence, rewrites configuration, stops / starts services, installs software, pulls / runs containers or exposes arbitrary target-shell mutation.
 
-DFTK 3.1 registers the same 68-tool capability surface as 3.0: **67 READ_ONLY**, **1 STATEFUL** and **0 DESTRUCTIVE** tools.
+DFTK registers a 72-tool capability surface: **71 READ_ONLY**, **1 STATEFUL** and **0 DESTRUCTIVE** tools.
 
 The one stateful tool, `archive.extract_safe`, writes to an explicit output directory and is blocked under the default policy. It applies path-traversal, member-count and expanded-size checks and does not modify the source archive.
 
@@ -34,9 +34,17 @@ When `python-registry`, `python-evtx`, `pyewf`, `pytsk3`, `dkimpy`, `pyspf` or `
 
 The original competition archive is retained only for provenance and knowledge mining. It is not imported by the registry. Historical scripts that contain credentials, target addresses, fixed challenge entities or state-changing commands must not be exposed to an autonomous Agent.
 
+## Audit log
+
+The optional chain-of-custody ledger (`--audit PATH`, or the `DFTK_AUDIT_LOG` environment variable) is a strictly additive side record. It is append-only, it is written outside the evidence tree at a path the caller chooses, and it never reads or rewrites evidence.
+
+Ledger writing is deliberately failure-tolerant: if the record cannot be serialized or the file cannot be written, the error is swallowed and the capability result is returned unchanged. Logging is never allowed to abort or alter an examination.
+
+Parameter values are recorded so a run can be reproduced, with two guards: keys matching a secret vocabulary (`password`, `passwd`, `token`, `secret`, `api_key`, `private_key`, `credential`, `auth`, `authorization`) are replaced with `<redacted>`, and strings longer than 4096 characters are truncated with an explicit omission marker. Treat the ledger as case material: it contains evidence paths and hashes, so it inherits the handling requirements of the case it documents.
+
 ## MCP policy boundary
 
-`dftk mcp` is local stdio-only in 3.1. The server defaults to `READ_ONLY` with network disabled. The host process owner may deliberately launch with `--max-safety STATEFUL` and/or `--allow-network`; these controls are not exposed as model-callable MCP arguments, and `DESTRUCTIVE` is never an accepted MCP ceiling.
+`dftk mcp` is local stdio-only. The server defaults to `READ_ONLY` with network disabled. The host process owner may deliberately launch with `--max-safety STATEFUL` and/or `--allow-network`; these controls are not exposed as model-callable MCP arguments, and `DESTRUCTIVE` is never an accepted MCP ceiling.
 
 The server also owns an explicit filesystem `--root`. Path-like capability parameters are checked before execution and must remain inside that root. The MCP workspace must also live beneath the root. This is an Agent integration guard; it does not replace normal examiner authorization or OS-level isolation.
 

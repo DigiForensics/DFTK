@@ -2,8 +2,20 @@
 
 All notable public changes to DFTK are recorded here.
 
-## Unreleased — Bug fixes (targeted at 3.2.1.x)
+## Unreleased — Chain-of-custody audit log, robustness fixes
 
+New:
+
+- Added an append-only chain-of-custody audit ledger (`dftk.core.audit.ToolAuditLog`). Every capability run can append one JSONL record carrying timestamp, tool, caller, resolved parameters (secret-looking keys masked, oversized strings truncated), safety level, network flag, status, summary, evidence SHA-256 hashes and errors. Enable it per invocation with `--audit PATH` on `dftk run`, `dftk recipe`, `dftk case run` and `dftk mcp`, or process-wide via the `DFTK_AUDIT_LOG` environment variable. The ledger is a side record: it never modifies evidence, and ledger serialization or I/O failures are swallowed so an examination is never interrupted by logging problems.
+- Added a test-coverage gate. `pyproject.toml` now carries a `test` extra and `[tool.coverage]` configuration, and CI runs the suite under `--cov-fail-under=60` (current measured coverage is ~70%).
+- Added a schema-driven no-crash regression test that invokes every registered capability with well-formed parameters derived from its own JSON schema and asserts the runner always returns an `Observation` instead of letting an exception escape.
+
+Fixed:
+
+- `file.strings` and `file.strings_unicode` no longer read the whole input into memory with `read_bytes()`; they now go through the bounded reader (4 GB default ceiling) and report `unsupported` on oversized input instead of risking exhaustion on multi-gigabyte evidence.
+- MCP parameter validation no longer misclassifies opaque text as a filesystem path. Previously any string containing `/` or `\` was path-checked, which wrongly rejected values such as Windows registry keys (`HKLM\...`) and search patterns containing separators. Validation now applies to declared path parameters, explicit `./` / `../` relative paths, absolute paths, and values that actually resolve inside the evidence root.
+- `CaseSession` run-sequence allocation is now serialized by an in-process lock in addition to the advisory file lock. The file lock covers cross-process callers (CLI plus MCP); the thread lock guarantees same-process thread serialization regardless of filesystem lock behaviour, resolving intermittent sequence races observed under load.
+- `windows.*` FILETIME values are converted with integer arithmetic instead of float division, removing sub-microsecond drift on large 100-nanosecond values.
 - `dftk prepare --rewrite-from` no longer rewrites arbitrary text files inside the toolkit. It now touches only launcher scripts (`.bat`/`.cmd`/`.ps1`) and backs up every file it changes under the DFTK-managed shim dir first, so the rewrite is reversible and never mangles data/config. Passing the toolkit's own location as `--rewrite-from` is now a no-op.
 - `dftk mcp` no longer hardpins `mcp==2.0.0`; it accepts the validated 2.x line (`>=2.0.0,<3`) so a 2.0.1 SDK release does not break startup. The version string in the rejection message now reflects the actual DFTK release instead of a stale `3.1.0`.
 - `dftk skill --install` no longer copies VCS/CI metadata (`.git`, `.gitignore`, `.github`) into the installed Agent skill directory.
