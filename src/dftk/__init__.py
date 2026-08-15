@@ -20,7 +20,7 @@ from .catalog import load_builtin_tools
 from .core.registry import ToolRegistry, registry
 from .core.safety import SafetyPolicy
 
-__version__ = "3.2.0"
+__version__ = "3.2.1"
 
 
 def get_registry() -> ToolRegistry:

@@ -2,6 +2,10 @@
 
 All notable public changes to DFTK are recorded here.
 
+## 3.2.1 — External tool discovery on POSIX
+
+- Fixed external-tool discovery on POSIX hosts: launcher scripts (`.bat`/`.cmd`/`.ps1`) shipped in the toolkit bundle are now treated as runnable by presence alone instead of requiring the POSIX execute bit. `dftk prepare` plus `detect_external_tools` / `dftk doctor` now correctly locate these tools off-PATH on Linux/macOS CI hosts. Native binaries (`.exe`) and extensionless scripts still require the execute bit.
+
 ## 3.2.0 — External toolchain preparation
 
 - Added `dftk prepare <toolkit_root>` to fold the win-tool-launcher environment-preparation workflow into DFTK: it records the extracted forensic-toolkit root and a DFTK-managed shim directory in `~/.dftk/toolchain.json`, generates two-layer launchers (`.bat` for Windows terminals, extensionless wrapper for the agent Bash) plus `set_path.bat`/`set_path.sh`, and optionally rewrites hardcoded roots inside the bundle (`--rewrite-from`).
