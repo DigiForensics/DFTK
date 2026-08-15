@@ -52,7 +52,11 @@ def _filetime_to_iso(ft: int) -> str | None:
     if not ft:
         return None
     try:
-        dt = _WIN_EPOCH + datetime.timedelta(microseconds=ft / 10.0)
+        # FILETIME counts 100-nanosecond intervals. Convert with integer
+        # arithmetic: a float division would lose precision for large values
+        # (double has ~53 bits of mantissa) and skew the microsecond result.
+        seconds, rest = divmod(ft, 10_000_000)
+        dt = _WIN_EPOCH + datetime.timedelta(seconds=seconds, microseconds=rest // 10)
         return dt.isoformat()
     except (OverflowError, ValueError, OSError):
         return None

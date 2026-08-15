@@ -24,6 +24,7 @@ from contextlib import contextmanager
 import json
 import os
 import time
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -103,6 +104,12 @@ class CaseSession:
     def __init__(self, workspace: str | Path = DEFAULT_WORKSPACE):
         self.workspace = Path(workspace)
         self.cases_dir = self.workspace / "cases"
+        # Intra-process guard: serializes runs issued from multiple threads of
+        # the *same* CaseSession (e.g. an Agent runtime fanning out tool calls).
+        # The advisory file lock below still covers the cross-process case
+        # (separate CLI / MCP worker processes); the two layers are independent
+        # and both must be held to allocate a run sequence safely.
+        self._run_lock = threading.Lock()
 
     # -- discovery ---------------------------------------------------------
     def list(self) -> list[dict]:
@@ -232,37 +239,38 @@ class CaseSession:
         self._manifest(case_id)
         case_dir = self._case_dir(case_id)
         lock_path = case_dir / ".case.lock"
-        with _exclusive_file_lock(lock_path):
-            manifest = self._manifest(case_id)
-            policy = SafetyPolicy(
-                max_level=SafetyLevel[max_safety],
-                allow_network=allow_network,
-            )
-            obs = registry.run(
-                tool,
-                params or {},
-                policy,
-                audit=audit,
-                caller=caller or f"case:{case_id}",
-            )
-            seq = len(manifest["runs"]) + 1
-            filename = f"{seq:03d}_{tool.replace('.', '_')}.json"
-            artifact_path = case_dir / "artifacts" / filename
-            _atomic_write_text(
-                artifact_path,
-                json.dumps(obs.to_dict(), ensure_ascii=False, indent=2),
-            )
-            entry = {
-                "seq": seq,
-                "tool": tool,
-                "params": params or {},
-                "artifact": f"artifacts/{filename}",
-                "status": obs.status.value,
-                "ran_at": _now(),
-            }
-            manifest["runs"].append(entry)
-            self._save_manifest(case_id, manifest)
-            return obs, dict(entry)
+        with self._run_lock:
+            with _exclusive_file_lock(lock_path):
+                manifest = self._manifest(case_id)
+                policy = SafetyPolicy(
+                    max_level=SafetyLevel[max_safety],
+                    allow_network=allow_network,
+                )
+                obs = registry.run(
+                    tool,
+                    params or {},
+                    policy,
+                    audit=audit,
+                    caller=caller or f"case:{case_id}",
+                )
+                seq = len(manifest["runs"]) + 1
+                filename = f"{seq:03d}_{tool.replace('.', '_')}.json"
+                artifact_path = case_dir / "artifacts" / filename
+                _atomic_write_text(
+                    artifact_path,
+                    json.dumps(obs.to_dict(), ensure_ascii=False, indent=2),
+                )
+                entry = {
+                    "seq": seq,
+                    "tool": tool,
+                    "params": params or {},
+                    "artifact": f"artifacts/{filename}",
+                    "status": obs.status.value,
+                    "ran_at": _now(),
+                }
+                manifest["runs"].append(entry)
+                self._save_manifest(case_id, manifest)
+                return obs, dict(entry)
 
     def run(
         self,
