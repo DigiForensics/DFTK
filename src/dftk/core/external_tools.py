@@ -19,15 +19,27 @@ operator / agent knows which capabilities are present, and so a tool can
 declare an external dependency via its `requires` field and be reported
 `unsupported` at call time when the binary is absent.
 
-Add entries to `_EXTERNAL_TOOLS` as new domains are supported. `binaries` are
-candidate executable names probed via PATH; `extra_dirs_env` names an env var
-with ";" / ":" separated directories to also search (for tools kept off PATH).
+Resolution order for each tool (first hit wins):
+
+1. PATH (covers PATHEXT variants on Windows);
+2. the per-category env var named in the tool entry (`DFTK_APK_TOOL_DIRS`, …);
+3. a single unified toolkit root from ``$DFTK_TOOLS`` or the config written by
+   ``dftk prepare`` — searched directly, under ``<root>/bin``, ``<root>/<name>``
+   and ``<root>/<category>``. This is what makes tools discoverable even when
+   they live off PATH on an exotic / non-readable drive;
+4. the DFTK-managed shim directory written by ``dftk prepare`` (always under the
+   user home, so it is readable by the agent regardless of the toolkit drive).
+
+The discovery is pure: PATH/known-dir resolution only, no execution. Used by
+`doctor` and as the source of truth for external-dependency gating.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
+from pathlib import Path
 from typing import Any
 
 _EXTERNAL_TOOLS: list[dict[str, Any]] = [
@@ -113,28 +125,52 @@ _EXTERNAL_TOOLS: list[dict[str, Any]] = [
 # Names a tool may reference in `requires` to declare an external dependency.
 EXTERNAL_TOOL_NAMES: frozenset[str] = frozenset(t["name"] for t in _EXTERNAL_TOOLS)
 
+# Human-readable labels for the `source` field reported by detection.
+_SOURCE_LABELS = {
+    "PATH": "PATH",
+    "env": "DFTK_*_TOOL_DIRS",
+    "dftk_tools": "DFTK_TOOLS / dftk prepare root",
+    "dftk_shims": "dftk prepare shims",
+}
 
-def _resolve_binary(candidates: list[str], extra_dirs: list[str]) -> str | None:
-    """Resolve the first available executable among candidates.
 
-    PATH is always searched (covers PATHEXT variants on Windows). When a tool
-    lives off PATH, the analyst points `extra_dirs_env` at its directory.
+def _toolchain_config() -> dict[str, Any]:
+    """Load the persistent toolchain config written by ``dftk prepare``.
+
+    Search order: explicit ``$DFTK_TOOLCHAIN_CONFIG`` → ``./.dftk/toolchain.json``
+    (case-local) → ``~/.dftk/toolchain.json`` (persistent, agent-readable). The
+    last location is always under the user home, so the agent can read it even
+    when the toolkit itself lives on an exotic / non-PATH drive.
     """
-    for cand in candidates:
-        found = shutil.which(cand)
-        if found:
-            return found
-    exts = (".exe", ".bat", ".cmd", ".ps1")
-    for d in extra_dirs:
-        if not d or not os.path.isdir(d):
+    candidates: list[Path] = []
+    env_cfg = os.environ.get("DFTK_TOOLCHAIN_CONFIG")
+    if env_cfg:
+        candidates.append(Path(env_cfg))
+    candidates.append(Path.cwd() / ".dftk" / "toolchain.json")
+    candidates.append(Path.home() / ".dftk" / "toolchain.json")
+    for p in candidates:
+        try:
+            if p.is_file():
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    return data
+        except (OSError, ValueError):
             continue
-        for cand in candidates:
-            names = [cand] + [cand + e for e in exts if not cand.lower().endswith(e)]
-            for n in names:
-                fp = os.path.join(d, n)
-                if os.path.isfile(fp) and os.access(fp, os.X_OK):
-                    return fp
-    return None
+    return {}
+
+
+def toolchain_roots() -> dict[str, str]:
+    """Return the active toolkit root and shim dir (empty strings if unset)."""
+    roots: dict[str, str] = {"toolkit_root": "", "bin_dir": ""}
+    cfg = _toolchain_config()
+    ut = os.environ.get("DFTK_TOOLS")
+    if ut:
+        roots["toolkit_root"] = ut
+    if cfg.get("toolkit_root"):
+        roots["toolkit_root"] = cfg["toolkit_root"]
+    if cfg.get("bin_dir"):
+        roots["bin_dir"] = cfg["bin_dir"]
+    return roots
 
 
 def _entry_dirs(entry: dict[str, Any]) -> list[str]:
@@ -144,12 +180,95 @@ def _entry_dirs(entry: dict[str, Any]) -> list[str]:
     return [p for p in os.environ.get(env, "").split(os.pathsep) if p]
 
 
+def _tagged_search_dirs(entry: dict[str, Any]) -> list[tuple[str, str]]:
+    """Directories to scan for a tool, each tagged with its discovery source."""
+    tagged: list[tuple[str, str]] = []
+    for d in _entry_dirs(entry):
+        tagged.append((d, "env"))
+    roots: list[tuple[str, str]] = []
+    ut = os.environ.get("DFTK_TOOLS")
+    if ut:
+        roots.append(("toolkit_root", ut))
+    cfg = _toolchain_config()
+    if cfg.get("toolkit_root"):
+        roots.append(("toolkit_root", cfg["toolkit_root"]))
+    if cfg.get("bin_dir"):
+        roots.append(("shims", cfg["bin_dir"]))
+    for label, r in roots:
+        r = (r or "").rstrip("/\\")
+        if not r or not os.path.isdir(r):
+            continue
+        source = "dftk_shims" if label == "shims" else "dftk_tools"
+        tagged.append((r, source))
+        tagged.append((os.path.join(r, "bin"), source))
+        tagged.append((os.path.join(r, entry["name"]), "dftk_tools"))
+        tagged.append((os.path.join(r, entry["category"]), "dftk_tools"))
+    return tagged
+
+
+def _resolve_binary(
+    candidates: list[str], dirs: list[str] | list[tuple[str, str]]
+) -> tuple[str | None, str | None]:
+    """Resolve the first available executable among candidates.
+
+    ``dirs`` may be a plain list of directory strings (legacy) or a list of
+    ``(dir, source)`` tuples (tagged). Returns ``(path, source)``; ``source`` is
+    ``None`` when nothing was found. PATH is always searched first (PATHEXT on
+    Windows); then the provided dirs.
+    """
+    tagged: list[tuple[str, str]]
+    if dirs and isinstance(dirs[0], tuple):
+        tagged = [tuple(d) for d in dirs]  # type: ignore[misc]
+    else:
+        tagged = [(d, "env") for d in dirs]  # type: ignore[assignment]
+
+    for cand in candidates:
+        found = shutil.which(cand)
+        if found:
+            return found, "PATH"
+
+    exts = (".exe", ".bat", ".cmd", ".ps1")
+    for d, source in tagged:
+        if not d or not os.path.isdir(d):
+            continue
+        for cand in candidates:
+            names = [cand] + [cand + e for e in exts if not cand.lower().endswith(e)]
+            for n in names:
+                fp = os.path.join(d, n)
+                if os.path.isfile(fp) and os.access(fp, os.X_OK):
+                    return fp, source
+    return None, None
+
+
 def external_tool_available(name: str) -> bool:
     """Return True if the named external tool is resolvable on this host."""
     for entry in _EXTERNAL_TOOLS:
         if entry["name"] == name:
-            return _resolve_binary(entry["binaries"], _entry_dirs(entry)) is not None
+            path, _ = _resolve_binary(entry["binaries"], _tagged_search_dirs(entry))
+            return path is not None
     return False
+
+
+def resolve_external_tool(name: str) -> str | None:
+    """Return the absolute path to the named external tool, or None if absent.
+
+    Use this inside a tool body that needs to invoke the binary, instead of
+    re-implementing PATH / DFTK_TOOLS / shim-dir discovery.
+    """
+    for entry in _EXTERNAL_TOOLS:
+        if entry["name"] == name:
+            path, _ = _resolve_binary(entry["binaries"], _tagged_search_dirs(entry))
+            return path
+    return None
+
+
+def external_tool_source(name: str) -> str | None:
+    """Return where a tool was resolved from (PATH / env / dftk_tools / dftk_shims)."""
+    for entry in _EXTERNAL_TOOLS:
+        if entry["name"] == name:
+            _, src = _resolve_binary(entry["binaries"], _tagged_search_dirs(entry))
+            return _SOURCE_LABELS.get(src, src)
+    return None
 
 
 def detect_external_tools() -> list[dict[str, Any]]:
@@ -160,7 +279,7 @@ def detect_external_tools() -> list[dict[str, Any]]:
     """
     results: list[dict[str, Any]] = []
     for entry in _EXTERNAL_TOOLS:
-        path = _resolve_binary(entry["binaries"], _entry_dirs(entry))
+        path, src = _resolve_binary(entry["binaries"], _tagged_search_dirs(entry))
         results.append(
             {
                 "name": entry["name"],
@@ -168,6 +287,7 @@ def detect_external_tools() -> list[dict[str, Any]]:
                 "purpose": entry["purpose"],
                 "available": path is not None,
                 "path": path,
+                "source": _SOURCE_LABELS.get(src, src) if path else None,
             }
         )
     return results

@@ -23,6 +23,22 @@ pip install "dftk[all]"
 
 `dftk[all]` still does not provide specialist system bindings such as `pyewf` / `pytsk3` where those require a dedicated forensic environment.
 
+## Environment preparation (external forensic tools)
+
+DFTK discovers external binaries (jadx, apktool, tshark, ghidra, radare2, …) but
+does not execute them. When you also ship a forensic-toolkit zip, the recipient
+extracts it and runs:
+
+```bash
+dftk prepare <extracted_toolkit_root>
+```
+
+This records the toolkit root + a DFTK-managed shim directory in
+`~/.dftk/toolchain.json` and generates launchers, so the tools are found on every
+subsequent `dftk` call without editing PATH — and remain readable by the agent
+even when the toolkit lives on an exotic / non-PATH drive. See
+`DEPLOY-TOOLCHAIN.md` for the recipient guide and fallbacks.
+
 ## Start policy
 
 Run the server with the narrowest authorized evidence root:

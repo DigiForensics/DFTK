@@ -9,7 +9,7 @@ import sys
 from typing import Any
 
 from .catalog import load_builtin_tools
-from .core.external_tools import detect_external_tools, _resolve_binary
+from .core.external_tools import detect_external_tools, toolchain_roots, _resolve_binary
 from .core.registry import registry
 
 _OPTIONAL_IMPORTS = {
@@ -60,6 +60,7 @@ def doctor_report() -> dict[str, Any]:
     mcp_version = _dist_version("mcp")
     external = detect_external_tools()
     external_available = sum(1 for t in external if t["available"])
+    toolchain = toolchain_roots()
     return {
         "ok": True,
         "toolkit": "dftk",
@@ -84,5 +85,9 @@ def doctor_report() -> dict[str, Any]:
             "available": external_available,
             "total": len(external),
             "tools": external,
+        },
+        "toolchain": {
+            "toolkit_root": toolchain["toolkit_root"],
+            "bin_dir": toolchain["bin_dir"],
         },
     }

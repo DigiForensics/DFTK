@@ -2,6 +2,13 @@
 
 All notable public changes to DFTK are recorded here.
 
+## 3.2.0 — External toolchain preparation
+
+- Added `dftk prepare <toolkit_root>` to fold the win-tool-launcher environment-preparation workflow into DFTK: it records the extracted forensic-toolkit root and a DFTK-managed shim directory in `~/.dftk/toolchain.json`, generates two-layer launchers (`.bat` for Windows terminals, extensionless wrapper for the agent Bash) plus `set_path.bat`/`set_path.sh`, and optionally rewrites hardcoded roots inside the bundle (`--rewrite-from`).
+- Extended the external-binary resolver (`core/external_tools`) to also search a single unified `$DFTK_TOOLS` root and the `dftk prepare` config (under `<root>`, `<root>/bin`, `<root>/<name>`, `<root>/<category>`, and the shim dir). Tools are now found on subsequent `dftk` calls without any manual PATH edit, even when the toolkit is on a non-PATH / non-readable drive.
+- `detect_external_tools` / `dftk doctor` now report a `source` field (`PATH` / `DFTK_*_TOOL_DIRS` / `DFTK_TOOLS / dftk prepare root` / `dftk prepare shims`) and `doctor_report` carries a `toolchain` section with the active `toolkit_root` / `bin_dir`.
+- Added public helpers `resolve_external_tool(name)` and `external_tool_source(name)` for tool bodies that need to invoke a discovered binary.
+
 ## 3.1.1 — Native Windows host-artifact tools and pcap enrichment
 
 - Added native, dependency-free Windows host-artifact tools: `windows.mft` (NTFS $MFT path rebuild, SI/FN timestamps, flags, size), `windows.prefetch` (.pf v17/23/26/30 executable, hash, run count, last run, referenced files), `windows.lnk` (target, timestamps, TrackerDataBlock machine/MAC), `windows.recyclebin` (Recycle Bin $I original name, size, deletion time, paired $R).

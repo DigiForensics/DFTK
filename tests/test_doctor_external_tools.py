@@ -22,12 +22,14 @@ def test_detect_external_tools_includes_catalog():
     names = {t["name"] for t in tools}
     assert "jadx" in names and "tshark" in names and "ghidra" in names
     for t in tools:
-        assert set(t) == {"name", "category", "purpose", "available", "path"}
+        assert set(t) == {"name", "category", "purpose", "available", "path", "source"}
         assert isinstance(t["available"], bool)
         if t["available"]:
             assert t["path"]
+            assert t["source"] in {"PATH", "DFTK_*_TOOL_DIRS", "DFTK_TOOLS / dftk prepare root", "dftk prepare shims"}
         else:
             assert t["path"] is None
+            assert t["source"] is None
 
 
 def test_doctor_report_carries_external_section():
@@ -42,8 +44,8 @@ def test_resolve_binary_finds_on_path(monkeypatch):
         "dftk.core.external_tools.shutil.which",
         lambda c: r"C:\tools\jadx.bat" if c == "jadx" else None,
     )
-    assert _resolve_binary(["jadx"], []) == r"C:\tools\jadx.bat"
-    assert _resolve_binary(["apktool"], []) is None
+    assert _resolve_binary(["jadx"], []) == (r"C:\tools\jadx.bat", "PATH")
+    assert _resolve_binary(["apktool"], []) == (None, None)
 
 
 def test_resolve_binary_falls_back_to_extra_dir(monkeypatch, tmp_path):
@@ -52,11 +54,11 @@ def test_resolve_binary_falls_back_to_extra_dir(monkeypatch, tmp_path):
     monkeypatch.setattr(os, "access", lambda p, mode: True)
     d = str(tmp_path / "bin")
     os.makedirs(d, exist_ok=True)
-    got = _resolve_binary(["radare2"], [d])
-    assert got is not None and d in got
+    path, source = _resolve_binary(["radare2"], [d])
+    assert path is not None and d in path
 
 
 def test_resolve_binary_extra_dir_ignores_missing(monkeypatch, tmp_path):
     monkeypatch.setattr("dftk.core.external_tools.shutil.which", lambda c: None)
     monkeypatch.setattr(os.path, "isfile", lambda p: False)
-    assert _resolve_binary(["radare2"], [str(tmp_path)]) is None
+    assert _resolve_binary(["radare2"], [str(tmp_path)]) == (None, None)

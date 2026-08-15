@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -205,6 +206,43 @@ def _cmd_doctor(_args):
     return 0 if report.get("ok") else 1
 
 
+def _cmd_prepare(args):
+    from .core import toolchain
+
+    if getattr(args, "show", False):
+        _emit(
+            {
+                "toolchain": toolchain.load_toolchain(),
+                "config_path": str(toolchain.toolchain_config_path()),
+            }
+        )
+        return 0
+
+    root = getattr(args, "toolkit_root", None) or os.environ.get("DFTK_TOOLS")
+    if not root:
+        _emit({"error": "no toolkit root given; pass a path or set DFTK_TOOLS"})
+        return 2
+    try:
+        report = toolchain.prepare(
+            root,
+            bin_dir=getattr(args, "bin_dir", None),
+            rewrite_from=getattr(args, "rewrite_from", None),
+            make_shims=not getattr(args, "no_shims", False),
+        )
+    except Exception as exc:  # noqa: BLE001
+        _emit({"error": f"dftk prepare failed: {exc}"})
+        return 2
+    _emit(report)
+    if report.get("found"):
+        print("\nTools are now discoverable by DFTK (verify with: dftk doctor).")
+        print("To also call them by bare name in a plain terminal, source the helper:")
+        print(f"  Windows:  {report['bin_dir']}\\set_path.bat")
+        print(f'  Bash:     . "{report["bin_dir"]}/set_path.sh"')
+    else:
+        print("\nNo known external tools were found under that root.")
+    return 0
+
+
 def _cmd_mcp(args):
     try:
         from .mcp_server import run_mcp_server
@@ -262,6 +300,36 @@ def main(argv=None):
 
     doctor = sub.add_parser("doctor", help="check DFTK runtime, capabilities and optional integrations")
 
+    prepare = sub.add_parser(
+        "prepare",
+        help="prepare an extracted forensic-toolkit directory so DFTK can find its tools",
+    )
+    prepare.add_argument(
+        "toolkit_root",
+        nargs="?",
+        help="extracted toolkit root (default: $DFTK_TOOLS)",
+    )
+    prepare.add_argument(
+        "--bin-dir",
+        metavar="DIR",
+        help="shim directory for launchers (default: ~/.dftk/bin)",
+    )
+    prepare.add_argument(
+        "--rewrite-from",
+        metavar="OLD_ROOT",
+        help="rewrite this hardcoded root inside the bundle to the toolkit root",
+    )
+    prepare.add_argument(
+        "--no-shims",
+        action="store_true",
+        help="only record the toolkit root; skip shim generation",
+    )
+    prepare.add_argument(
+        "--show",
+        action="store_true",
+        help="print the current toolchain config and exit",
+    )
+
     skill = sub.add_parser("skill", help="show/install the DFTK Agent Skill (fetched from GitHub)")
     skill.add_argument("--install", action="store_true", help="fetch the DFTK-skill repo and install the main skill + standalone analysis skills")
     skill.add_argument(
@@ -316,6 +384,8 @@ def main(argv=None):
         return _cmd_case(args)
     if args.cmd == "doctor":
         return _cmd_doctor(args)
+    if args.cmd == "prepare":
+        return _cmd_prepare(args)
     if args.cmd == "mcp":
         return _cmd_mcp(args)
     if args.cmd == "list":
