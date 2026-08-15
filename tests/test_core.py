@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dftk.catalog import load_builtin_tools
-from dftk.core.registry import registry
+from dftk.core.registry import registry, ToolRegistry
 from dftk.core.safety import SafetyPolicy
 from dftk.core.models import SafetyLevel,Status
 
@@ -46,3 +46,30 @@ def test_manifest_has_agent_metadata():
     assert 'android' in spec.tags
     assert 'android_manifest' in spec.produces
     assert spec.deterministic is True
+
+
+def test_run_blames_caller_for_wrong_params():
+    # A binding TypeError (e.g. missing required arg) must be reported as an
+    # "Invalid parameters" error, not a generic execution failure.
+    load_builtin_tools()
+    obs = registry.run('file.strings', {}, SafetyPolicy())  # missing required 'path'
+    assert obs.status == Status.ERROR
+    assert obs.summary == "Invalid parameters"
+
+
+def test_run_does_not_blame_caller_for_internal_bug():
+    # A TypeError raised *inside* the tool body is a tool bug and must NOT be
+    # reported as "Invalid parameters" -- it should surface as a real error.
+    # Use a throwaway registry so the synthetic tool never reaches the global one.
+    reg = ToolRegistry()
+
+    @reg.tool(name="__test_internal_bug", description="x",
+              parameters={"type": "object", "properties": {}}, safety=SafetyLevel.READ_ONLY)
+    def _buggy(**kwargs):
+        raise TypeError("'NoneType' object is not subscriptable")
+
+    obs = reg.run("__test_internal_bug", {}, SafetyPolicy())
+    assert obs.status == Status.ERROR
+    # The message must reflect a genuine execution failure, not "Invalid parameters".
+    assert obs.summary == "Tool execution failed"
+    assert "TypeError" in obs.errors[0]

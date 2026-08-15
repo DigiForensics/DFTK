@@ -46,3 +46,26 @@ def test_install_from_repo_root(tmp_path: Path):
 
     # standalone skills must NOT be nested under the main dftk skill
     assert not (base / "dftk" / "skills").exists()
+
+
+def test_install_excludes_vcs_metadata(tmp_path: Path):
+    # Simulate a git-cloned repo root: real skill content plus .git + .github.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _make_fake_repo(repo)
+    (repo / ".git").mkdir()
+    (repo / ".git" / "config").write_text("[core]\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    (repo / ".github").mkdir()
+    (repo / ".github" / "workflows").mkdir()
+    (repo / ".github" / "workflows" / "ci.yml").write_text("on: push\n", encoding="utf-8")
+
+    base = tmp_path / "skills_base"
+    install_from_repo_root(repo, base)
+
+    # VCS / CI metadata must never leak into the installed skill directory.
+    assert not (base / "dftk" / ".git").exists()
+    assert not (base / "dftk" / ".gitignore").exists()
+    assert not (base / "dftk" / ".github").exists()
+    # Real content is still present.
+    assert (base / "dftk" / "SKILL.md").is_file()

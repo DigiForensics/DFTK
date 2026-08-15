@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+from pathlib import Path
 
 from dftk.core import toolchain
 from dftk.core.external_tools import (
@@ -88,11 +89,39 @@ def test_prepare_rewrites_hardcoded_paths(tmp_path, monkeypatch):
     stale = r"D:\StaleToolkit"
     launcher = root / "bin" / "jadx.bat"
     launcher.write_text(f'@echo off\r\n"{stale}\\bin\\jadx.exe" %*\r\n', encoding="utf-8", newline="")
+    # A non-launcher file that happens to contain the stale path must NOT be
+    # rewritten -- it could be evidence-like content.
+    notes = root / "notes.txt"
+    notes.write_text(f"original location was {stale}\n", encoding="utf-8")
 
     report = toolchain.prepare(root, rewrite_from=stale)
     assert report["rewritten_files"] >= 1
     assert stale not in launcher.read_text(encoding="utf-8")
     assert str(root).replace("\\", "/") in launcher.read_text(encoding="utf-8").replace("\\", "/")
+
+    # Non-launcher content is preserved verbatim.
+    assert notes.read_text(encoding="utf-8") == f"original location was {stale}\n"
+
+    # The rewrite is reversible: an untouched copy was backed up first.
+    assert report["rewrite_backup_dir"]
+    backups = list((Path(report["rewrite_backup_dir"])).rglob("*.bat"))
+    assert backups
+    assert stale in backups[0].read_text(encoding="utf-8")
+
+
+def test_prepare_rewrite_is_noop_when_old_equals_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("DFTK_TOOLCHAIN_CONFIG", str(tmp_path / "tc.json"))
+    monkeypatch.setattr("dftk.core.external_tools.shutil.which", lambda c: None)
+
+    root = tmp_path / "toolkit"
+    _fake_toolkit(root, ["jadx"])
+    launcher = root / "bin" / "jadx.bat"
+    launcher.write_text('@echo off\r\n"C:\\X\\bin\\jadx.exe" %*\r\n', encoding="utf-8", newline="")
+
+    # Passing the toolkit's own location as --rewrite-from must not churn files.
+    report = toolchain.prepare(root, rewrite_from=str(root))
+    assert report["rewritten_files"] == 0
+    assert report["rewrite_backup_dir"] is None
 
 
 def test_load_save_toolchain_roundtrip(tmp_path):

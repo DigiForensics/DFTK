@@ -62,9 +62,15 @@ def fetch_skill_repo(ref: str | None = None, dest: Path | None = None) -> Path:
     return nested if nested is not None else dest
 
 
+# VCS / CI / metadata that must never be copied into an installed skill dir.
+_SKIP_NAMES = {".git", ".gitignore", ".github"}
+
+
 def _copy_tree(src: Path, dst: Path, exclude_top: set[str] | None = None) -> None:
     dst.mkdir(parents=True, exist_ok=True)
     for child in src.iterdir():
+        if child.name in _SKIP_NAMES:
+            continue
         if exclude_top and child.name in exclude_top:
             continue
         target = dst / child.name

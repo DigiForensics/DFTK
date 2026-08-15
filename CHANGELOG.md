@@ -2,6 +2,14 @@
 
 All notable public changes to DFTK are recorded here.
 
+## Unreleased — Bug fixes (targeted at 3.2.1.x)
+
+- `dftk prepare --rewrite-from` no longer rewrites arbitrary text files inside the toolkit. It now touches only launcher scripts (`.bat`/`.cmd`/`.ps1`) and backs up every file it changes under the DFTK-managed shim dir first, so the rewrite is reversible and never mangles data/config. Passing the toolkit's own location as `--rewrite-from` is now a no-op.
+- `dftk mcp` no longer hardpins `mcp==2.0.0`; it accepts the validated 2.x line (`>=2.0.0,<3`) so a 2.0.1 SDK release does not break startup. The version string in the rejection message now reflects the actual DFTK release instead of a stale `3.1.0`.
+- `dftk skill --install` no longer copies VCS/CI metadata (`.git`, `.gitignore`, `.github`) into the installed Agent skill directory.
+- `archive.inventory` streams the archive central directory and stops after `limit` members instead of materializing the entire directory up front, so peak memory stays proportional to `limit` on very large archives (ZIP and TAR).
+- The tool runner now distinguishes caller parameter errors from internal tool bugs: a `TypeError` raised while *binding* the call is reported as `Invalid parameters`, while a `TypeError` raised inside a tool body surfaces as `Tool execution failed` rather than being misreported as a caller mistake.
+
 ## 3.2.1 — External tool discovery on POSIX
 
 - Fixed external-tool discovery on POSIX hosts: launcher scripts (`.bat`/`.cmd`/`.ps1`) shipped in the toolkit bundle are now treated as runnable by presence alone instead of requiring the POSIX execute bit. `dftk prepare` plus `detect_external_tools` / `dftk doctor` now correctly locate these tools off-PATH on Linux/macOS CI hosts. Native binaries (`.exe`) and extensionless scripts still require the execute bit.

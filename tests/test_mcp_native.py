@@ -6,6 +6,7 @@ import importlib.metadata
 import pytest
 
 from dftk.mcp_server import DFTKMCPGateway, _validate_params, create_server
+from dftk.doctor import _mcp_version_supported
 
 
 def test_mcp_default_policy_and_root_guard(tmp_path: Path):
@@ -51,8 +52,8 @@ def test_mcp_tool_surface_is_six(tmp_path: Path):
         mcp_version = importlib.metadata.version("mcp")
     except importlib.metadata.PackageNotFoundError:
         pytest.skip("DFTK MCP extra is not installed in this environment")
-    if mcp_version != "2.0.0":
-        pytest.skip("DFTK 3.1 MCP contract is validated with mcp==2.0.0")
+    if not _mcp_version_supported(mcp_version):
+        pytest.skip("DFTK MCP contract requires mcp >=2.0.0,<3")
     import asyncio
     from mcp import Client
 

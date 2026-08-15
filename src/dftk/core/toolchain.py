@@ -25,8 +25,10 @@ the toolkit zip, running ``dftk prepare <root>``:
   extensionless wrapper for the agent Bash) into that shim dir;
 * emits ``set_path.bat`` / ``set_path.sh`` so the bare tool names also work in a
   plain terminal session without modifying persistent PATH;
-* optionally rewrites hardcoded absolute roots left inside the bundle
-  (``--rewrite-from``) so launcher scripts point at the real location.
+* optionally rewrites a stale hardcoded root left inside launcher scripts
+  of the bundle (``--rewrite-from``) so they point at the real location. Only
+  ``.bat``/``.cmd``/``.ps1`` launchers are touched and every rewritten file is
+  backed up first, so the step is reversible and never mangles data/config.
 
 The binary resolver in ``core.external_tools`` then searches the shim dir and
 toolkit root automatically, so the tools are found on subsequent ``dftk`` calls
@@ -45,10 +47,11 @@ from .external_tools import _EXTERNAL_TOOLS, _looks_runnable
 
 _DEFAULT_BIN_SUBDIR = "bin"
 _CONFIG_NAME = "toolchain.json"
-_REWRITE_EXTS = (
-    ".bat", ".cmd", ".py", ".ps1", ".cfg", ".ini", ".txt",
-    ".json", ".xml", ".properties", ".sh",
-)
+# Only launcher scripts are ever rewritten. Other text files (data, configs,
+# READMEs, source) are deliberately excluded: a stale-path substring can appear
+# in evidence-like content, and rewriting it in place would both corrupt that
+# content and change the toolkit's hashes with no easy recovery.
+_REWRITE_EXTS = (".bat", ".cmd", ".ps1")
 
 
 def toolchain_config_path(base: Path | None = None) -> Path:
@@ -151,15 +154,27 @@ def _emit_set_path(shim_dir: Path) -> None:
     (shim_dir / "set_path.sh").write_text(sh, encoding="utf-8", newline="")
 
 
-def _rewrite_hardcoded_paths(root: Path, old: str, new: str) -> int:
-    """Replace a stale hardcoded root inside launcher/text files of the bundle.
+def _rewrite_hardcoded_paths(
+    root: Path, old: str, new: str, backup_dir: Path | None = None
+) -> tuple[int, list[str]]:
+    """Replace a stale hardcoded root inside launcher scripts of the bundle.
 
-    Off by default; only runs when the caller passes ``--rewrite-from``. Returns
-    the number of files rewritten.
+    Off by default; only runs when the caller passes ``--rewrite-from``.
+
+    Safety:
+    * Only launcher scripts (``.bat``/``.cmd``/``.ps1``) are touched. Other text
+      files are left alone (see ``_REWRITE_EXTS``).
+    * Every file that is about to be changed is copied verbatim into
+      ``backup_dir`` first, so the rewrite is fully reversible. ``backup_dir``
+      lives under the DFTK-managed shim dir (outside the toolkit) to avoid
+      polluting the forensic image.
+
+    Returns ``(count, backed_up_paths)``.
     """
     old_n = old.replace("\\", "/")
     new_n = new.replace("\\", "/")
     count = 0
+    backed_up: list[str] = []
     for dp, _, fns in os.walk(root):
         for fn in fns:
             if not fn.lower().endswith(_REWRITE_EXTS):
@@ -172,9 +187,18 @@ def _rewrite_hardcoded_paths(root: Path, old: str, new: str) -> int:
             if old in t or old_n in t:
                 nw = t.replace(old, new).replace(old_n, new_n)
                 if nw != t:
+                    if backup_dir is not None:
+                        rel = p.relative_to(root)
+                        bkp = backup_dir / rel
+                        try:
+                            bkp.parent.mkdir(parents=True, exist_ok=True)
+                            bkp.write_text(t, encoding="utf-8")
+                            backed_up.append(str(bkp))
+                        except OSError:
+                            pass
                     p.write_text(nw, encoding="utf-8")
                     count += 1
-    return count
+    return count, backed_up
 
 
 def prepare(
@@ -194,8 +218,10 @@ def prepare(
         Where shims are written. Defaults to ``~/.dftk/bin`` (user home, so the
         agent can always read it).
     rewrite_from:
-        Optional stale absolute root to rewrite inside the bundle to
-        ``toolkit_root`` (mirrors win-tool-launcher's path-fix step).
+        Optional stale absolute root to rewrite inside launcher scripts of the
+        bundle to ``toolkit_root`` (mirrors win-tool-launcher's path-fix step).
+        Only ``.bat``/``.cmd``/``.ps1`` launchers are affected, and each is
+        backed up under the DFTK-managed shim dir before being changed.
     make_shims:
         When False, only records the toolkit root (no shim generation).
     """
@@ -224,8 +250,21 @@ def prepare(
             shims.extend(_emit_shims(shim_dir, entry["name"], real))
 
     rewritten = 0
+    rewrite_backup_dir: str | None = None
     if rewrite_from:
-        rewritten = _rewrite_hardcoded_paths(root, rewrite_from, str(root))
+        resolved_old = Path(rewrite_from).expanduser().resolve()
+        if resolved_old != root:
+            ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+            backup_dir = shim_dir / "rewrite-backups" / ts
+            try:
+                backup_dir.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                backup_dir = None
+            rewritten, _ = _rewrite_hardcoded_paths(
+                root, rewrite_from, str(root), backup_dir
+            )
+            if backup_dir is not None and rewritten:
+                rewrite_backup_dir = str(backup_dir)
 
     if make_shims:
         _emit_set_path(shim_dir)
@@ -245,5 +284,6 @@ def prepare(
         "missing": missing,
         "shims": shims,
         "rewritten_files": rewritten,
+        "rewrite_backup_dir": rewrite_backup_dir,
         "config": str(toolchain_config_path()),
     }

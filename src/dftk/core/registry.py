@@ -86,8 +86,23 @@ class ToolRegistry:
                         f"found on PATH or via its DFTK_*_TOOL_DIRS directory"
                     ],
                 )
+        func = self._funcs[name]
         try:
-            out = self._funcs[name](**params)
+            try:
+                out = func(**params)
+            except TypeError as e:
+                # A TypeError raised while *binding* the call (missing required
+                # arg / unexpected keyword) means the caller supplied the wrong
+                # parameters. Any TypeError raised *inside* the tool body is a
+                # tool bug and must be reported as an execution failure, never
+                # disguised as a caller mistake.
+                msg = str(e)
+                qual = getattr(func, "__qualname__", "")
+                if msg.startswith(qual + "(") or msg.startswith(
+                    getattr(func, "__name__", "") + "("
+                ):
+                    return Observation(name, Status.ERROR, "Invalid parameters", errors=[msg])
+                raise
             if not isinstance(out, Observation):
                 raise TypeError("tool did not return Observation")
             out.meta.setdefault("tool_contract", {
@@ -103,8 +118,6 @@ class ToolRegistry:
                     evidence.source_sha256=known_hash
                 evidence.confidence=max(0.0,min(1.0,float(evidence.confidence)))
             return out
-        except TypeError as e:
-            return Observation(name, Status.ERROR, "Invalid parameters or tool implementation error", errors=[str(e)])
         except Exception as e:
             return Observation(name, Status.ERROR, "Tool execution failed", errors=[f"{type(e).__name__}: {e}"])
 

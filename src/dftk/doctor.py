@@ -12,6 +12,21 @@ from .catalog import load_builtin_tools
 from .core.external_tools import detect_external_tools, toolchain_roots, _resolve_binary
 from .core.registry import registry
 
+
+def _mcp_version_supported(installed: str | None) -> bool:
+    """True when the installed ``mcp`` SDK is in the supported 2.x line.
+
+    DFTK is validated against mcp 2.0.0 but tracks the 2.x series, so any
+    2.y.z release is accepted; 1.x is too old and 3.x is unvalidated.
+    """
+    if not installed:
+        return False
+    try:
+        major = int(installed.split(".")[0])
+    except (ValueError, IndexError):
+        return False
+    return major == 2
+
 _OPTIONAL_IMPORTS = {
     "ssh:paramiko": "paramiko",
     "windows:registry": "Registry",
@@ -77,8 +92,8 @@ def doctor_report() -> dict[str, Any]:
         "mcp": {
             "installed": mcp_version is not None,
             "version": mcp_version,
-            "supported_version": "2.0.0",
-            "ready": mcp_version == "2.0.0",
+            "supported_version": ">=2.0.0,<3",
+            "ready": _mcp_version_supported(mcp_version),
         },
         "optional": optional,
         "external": {

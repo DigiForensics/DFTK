@@ -24,7 +24,8 @@ from .catalog import load_builtin_tools
 from .core.case import CaseError, CaseSession
 from .core.models import SafetyLevel
 from .core.registry import registry
-from .doctor import doctor_report
+from .doctor import _mcp_version_supported, doctor_report
+from . import __version__ as _TOOLKIT_VERSION
 
 _EXPECTED_MCP = "2.0.0"
 _MAX_ARGUMENT_BYTES = 256 * 1024
@@ -483,8 +484,11 @@ def create_server(gateway: DFTKMCPGateway):
         from mcp.server import MCPServer
     except (ImportError, importlib.metadata.PackageNotFoundError) as exc:
         raise RuntimeError('DFTK MCP requires the optional dependency: pip install "dftk[mcp]"') from exc
-    if installed != _EXPECTED_MCP:
-        raise RuntimeError(f"unsupported MCP SDK version {installed!r}; DFTK 3.1.0 is validated with {_EXPECTED_MCP}")
+    if not _mcp_version_supported(installed):
+        raise RuntimeError(
+            f"unsupported MCP SDK version {installed!r}; DFTK {_TOOLKIT_VERSION} "
+            f"requires mcp >=2.0.0,<3 (validated with {_EXPECTED_MCP})"
+        )
 
     server = MCPServer("DFTK")
 
