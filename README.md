@@ -24,7 +24,7 @@ DFTK is not an autonomous forensic agent. It is a library of structured operatio
 
 - **Read-only by default.** Read-only tools open evidence without modifying it. Operations that write derived output require the caller to select an explicit `STATEFUL` or `DESTRUCTIVE` safety level.
 - **Zero mandatory dependencies.** The base package has no mandatory third-party runtime dependencies. Optional parsers (E01/TSK, Windows Registry/EVTX, DKIM/SPF, SSH) report `unsupported` when their dependency is missing, instead of guessing.
-- **One registry, 68 tools.** Each tool declares its parameters, safety level, semantic tags, network needs, and produced-evidence types, so a planner can pick the right tool from an evidence requirement.
+- **One registry, 72 tools.** Each tool declares its parameters, safety level, semantic tags, network needs, and produced-evidence types, so a planner can pick the right tool from an evidence requirement.
 - **Safety enforced in one place.** `READ_ONLY < STATEFUL < DESTRUCTIVE`; no registered tool is `DESTRUCTIVE`. Network access is gated behind an explicit opt-in.
 
 ## Contents
@@ -196,7 +196,7 @@ meta         tool and run metadata
 
 ## Capability model
 
-DFTK 3.1.0 contains a registry of **68 tools** (67 `READ_ONLY`, 1 `STATEFUL`) and **14 recipes** spanning:
+DFTK 3.2.1 contains a registry of **72 tools** (71 `READ_ONLY`, 1 `STATEFUL`) and **14 recipes** spanning:
 
 - artifact identification, hashing, strings, search and timeline;
 - APK, DEX, binary AXML, Android app data and endpoint extraction;
@@ -237,7 +237,7 @@ DFTK separates execution safety from forensic reasoning:
 |-------|----------|
 | `READ_ONLY` | reads evidence or immutable / read-only views |
 | `STATEFUL` | may write derived workspace output without changing source evidence |
-| `DESTRUCTIVE` | reserved for target-modifying actions; **not registered** in 3.1.0 |
+| `DESTRUCTIVE` | reserved for target-modifying actions; **not registered** in 3.2.1 |
 
 The default policy allows only `READ_ONLY` operations. Network access is independently gated and must be enabled with `--allow-network`. Controlled archive extraction (`archive.extract_safe`) is `STATEFUL` and blocked unless the caller explicitly raises the ceiling:
 
