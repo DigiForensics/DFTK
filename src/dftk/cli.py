@@ -23,6 +23,7 @@ from .catalog import load_builtin_tools
 from .core.models import SafetyLevel
 from .core.registry import registry
 from .core.safety import SafetyPolicy
+from .core.audit import ToolAuditLog
 from .skill_bundle import (
     SKILL_REPO_WEB,
     fetch_skill_repo,
@@ -165,12 +166,15 @@ def _cmd_case(args):
         except Exception as exc:
             _emit({"error": f"invalid params JSON: {exc}"})
             return 2
+        audit = ToolAuditLog(args.audit) if args.audit else None
         obs = session.run(
             args.case_id,
             args.tool,
             params,
             allow_network=args.allow_network,
             max_safety=args.max_safety,
+            audit=audit,
+            caller=f"case:{args.case_id}",
         )
         _emit(obs.to_dict())
         return 0 if obs.status.value in ("ok", "partial", "unsupported") else 1
@@ -253,6 +257,7 @@ def _cmd_mcp(args):
             max_safety=args.max_safety,
             allow_network=args.allow_network,
             timeout_seconds=args.timeout,
+            audit=args.audit,
         )
         return 0
     except Exception as exc:
@@ -288,12 +293,14 @@ def main(argv=None):
         choices=["READ_ONLY", "STATEFUL", "DESTRUCTIVE"],
         default="READ_ONLY",
     )
+    run.add_argument("--audit", metavar="PATH", help="append a JSONL chain-of-custody record of this run to PATH")
 
     recipe = sub.add_parser("recipe")
     recipe.add_argument("name")
     recipe.add_argument("--params")
     recipe.add_argument("--params-file")
     recipe.add_argument("--out")
+    recipe.add_argument("--audit", metavar="PATH", help="append a JSONL chain-of-custody record of this run to PATH")
 
     export = sub.add_parser("export-manifest")
     export.add_argument("--out")
@@ -361,6 +368,7 @@ def main(argv=None):
         choices=["READ_ONLY", "STATEFUL", "DESTRUCTIVE"],
         default="READ_ONLY",
     )
+    case_run.add_argument("--audit", metavar="PATH", help="append a JSONL chain-of-custody record of this run to PATH")
     case_timeline = case_sub.add_parser("timeline", help="merge all recorded Observations into one timeline")
     case_timeline.add_argument("case_id")
     case_timeline.add_argument("--out")
@@ -375,6 +383,9 @@ def main(argv=None):
     mcp.add_argument("--max-safety", choices=["READ_ONLY", "STATEFUL"], default="READ_ONLY", help="server-owned capability safety ceiling")
     mcp.add_argument("--allow-network", action="store_true", help="server-owned opt-in for capabilities that declare network access")
     mcp.add_argument("--timeout", type=int, default=180, metavar="SECONDS", help="hard timeout for one capability run (default: 180)")
+    mcp.add_argument("--audit", nargs="?", const=".dftk/audit.jsonl", metavar="PATH",
+                     help="record a JSONL chain-of-custody ledger of every MCP capability run "
+                          "(default location: .dftk/audit.jsonl when flag is given without a path)")
 
     args = parser.parse_args(argv)
 
@@ -414,7 +425,8 @@ def main(argv=None):
         return 2
     if args.cmd == "recipe":
         name = args.name if args.name.startswith("recipe.") else "recipe." + args.name
-        obs = registry.run(name, params, SafetyPolicy())
+        audit = ToolAuditLog(args.audit) if args.audit else None
+        obs = registry.run(name, params, SafetyPolicy(), audit=audit, caller="cli")
         _emit(obs.to_dict(), args.out)
         return 0 if obs.status.value in ("ok", "partial", "unsupported") else 1
 
@@ -422,7 +434,8 @@ def main(argv=None):
         max_level=SafetyLevel[args.max_safety],
         allow_network=args.allow_network,
     )
-    obs = registry.run(args.name, params, policy)
+    audit = ToolAuditLog(args.audit) if args.audit else None
+    obs = registry.run(args.name, params, policy, audit=audit, caller="cli")
     _emit(obs.to_dict(), args.out)
     return 0 if obs.status.value in ("ok", "partial", "unsupported") else 1
 

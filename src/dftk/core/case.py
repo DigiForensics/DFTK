@@ -217,6 +217,8 @@ class CaseSession:
         *,
         allow_network: bool = False,
         max_safety: str = "READ_ONLY",
+        audit: Any = None,
+        caller: str | None = None,
     ) -> tuple[Observation, dict]:
         """Run and persist one capability, returning its exact manifest entry.
 
@@ -236,7 +238,13 @@ class CaseSession:
                 max_level=SafetyLevel[max_safety],
                 allow_network=allow_network,
             )
-            obs = registry.run(tool, params or {}, policy)
+            obs = registry.run(
+                tool,
+                params or {},
+                policy,
+                audit=audit,
+                caller=caller or f"case:{case_id}",
+            )
             seq = len(manifest["runs"]) + 1
             filename = f"{seq:03d}_{tool.replace('.', '_')}.json"
             artifact_path = case_dir / "artifacts" / filename
@@ -264,6 +272,8 @@ class CaseSession:
         *,
         allow_network: bool = False,
         max_safety: str = "READ_ONLY",
+        audit: Any = None,
+        caller: str | None = None,
     ) -> Observation:
         obs, _entry = self._run_with_entry(
             case_id,
@@ -271,6 +281,8 @@ class CaseSession:
             params,
             allow_network=allow_network,
             max_safety=max_safety,
+            audit=audit,
+            caller=caller,
         )
         return obs
 

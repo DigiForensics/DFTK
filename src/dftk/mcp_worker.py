@@ -84,12 +84,18 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("MCP worker refuses safety above STATEFUL")
     allow_network = bool(request.get("allow_network", False))
 
+    from .core.audit import ToolAuditLog
+
+    audit_path = request.get("audit")
+    audit = ToolAuditLog(audit_path) if audit_path else None
+    caller = "mcp"
+
     if action == "run":
         policy = SafetyPolicy(
             max_level=SafetyLevel[max_safety],
             allow_network=allow_network,
         )
-        obs = registry.run(name, params, policy)
+        obs = registry.run(name, params, policy, audit=audit, caller=caller)
         return {"ok": True, "observation": obs.to_dict()}
 
     if action == "case_run":
@@ -102,6 +108,8 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
             params,
             allow_network=allow_network,
             max_safety=max_safety,
+            audit=audit,
+            caller=f"mcp:case:{case_id}",
         )
         return {"ok": True, "observation": obs.to_dict(), "case_run": entry}
 

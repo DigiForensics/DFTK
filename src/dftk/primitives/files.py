@@ -17,7 +17,7 @@ from pathlib import Path
 import struct, tarfile, zipfile, os
 from dftk.core.registry import registry
 from dftk.core.models import Observation, Evidence, Status, SafetyLevel
-from dftk.core.helpers import hash_file, sha256_file, printable_strings
+from dftk.core.helpers import hash_file, sha256_file, printable_strings, read_file_bounded_observation
 
 @registry.tool(
     name="file.hash",
@@ -52,7 +52,12 @@ def file_hash(path: str, algorithms: list[str] | None = None) -> Observation:
 def file_strings(path: str, min_length: int = 4, limit: int = 5000) -> Observation:
     p=Path(path)
     if not p.is_file(): return Observation("file.strings",Status.ERROR,"Input is not a file",errors=[str(p)])
-    data=p.read_bytes()
+    # Bound the in-memory read so very large evidence cannot exhaust RAM
+    # (DEFAULT_MAX_READ caps the whole-file load). On oversize input the
+    # helper returns an UNSUPPORTED Observation carrying the source hash.
+    data, err = read_file_bounded_observation("file.strings", p)
+    if err is not None:
+        return err
     rows=printable_strings(data,min_length)[:limit]
     ev=[Evidence(str(p),"string",s,locator=f"offset:{off}") for off,s in rows[:200]]
     warnings=[]
@@ -230,7 +235,10 @@ def file_strings_unicode(path:str,min_length:int=4,limit:int=5000)->Observation:
     import re
     p=Path(path)
     if not p.is_file(): return Observation('file.strings_unicode',Status.ERROR,'Input is not a file',errors=[str(p)])
-    data=p.read_bytes(); rows=[]
+    data, err = read_file_bounded_observation('file.strings_unicode', p)
+    if err is not None:
+        return err
+    rows=[]
     ml=max(1,min_length)
     le=re.compile(rb'(?:[\x20-\x7e]\x00){%d,}'%ml)
     be=re.compile(rb'(?:\x00[\x20-\x7e]){%d,}'%ml)

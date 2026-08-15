@@ -32,6 +32,22 @@ def test_mcp_default_policy_and_root_guard(tmp_path: Path):
     _validate_params({"params": ["/api/v1/login"]}, root=tmp_path.resolve())
 
 
+def test_mcp_validate_keeps_opaque_separator_text(tmp_path: Path):
+    # Windows registry keys and other opaque text that merely contain separators
+    # must not be misclassified as filesystem paths and rejected.
+    _validate_params({"subkey": "HKLM\\Software\\Microsoft\\Windows"}, root=tmp_path.resolve())
+    _validate_params({"note": "a/b/c is just text"}, root=tmp_path.resolve())
+    _validate_params({"label": "foo/bar"}, root=tmp_path.resolve())
+
+
+def test_mcp_validate_constrains_real_relative_path_under_unknown_key(tmp_path: Path):
+    (tmp_path / "app.apk").write_bytes(b"x")
+    # A real path under root is still constrained even via an unknown key.
+    _validate_params({"apk": "app.apk"}, root=tmp_path.resolve())
+    with pytest.raises(ValueError):
+        _validate_params({"apk": "../../etc/passwd"}, root=tmp_path.resolve())
+
+
 def test_mcp_stateful_is_server_owned(tmp_path: Path):
     source = tmp_path / "evidence.zip"
     source.write_bytes(b"not-a-real-zip")

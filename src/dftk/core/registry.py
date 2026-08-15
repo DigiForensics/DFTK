@@ -19,6 +19,7 @@ from dataclasses import replace
 from .models import Observation, Status, ToolSpec, SafetyLevel
 from .safety import SafetyPolicy, SafetyViolation
 from .external_tools import external_tool_available, EXTERNAL_TOOL_NAMES
+from .audit import ToolAuditLog, _get_default_audit_log
 
 ToolFunc = Callable[..., Observation]
 
@@ -66,18 +67,30 @@ class ToolRegistry:
             specs = [s for s in specs if produces in s.produces]
         return specs
 
-    def run(self, name: str, params: dict[str, Any], policy: SafetyPolicy | None = None) -> Observation:
+    def run(
+        self,
+        name: str,
+        params: dict[str, Any],
+        policy: SafetyPolicy | None = None,
+        audit: ToolAuditLog | None = None,
+        caller: str = "cli",
+    ) -> Observation:
         policy = policy or SafetyPolicy()
-        if name not in self._specs:
-            return Observation(name, Status.ERROR, "Unknown tool", errors=[f"unknown tool: {name}"])
-        spec = self._specs[name]
+        audit = audit or _get_default_audit_log()
+        spec = self._specs.get(name)
+        if spec is None:
+            out = Observation(name, Status.ERROR, "Unknown tool", errors=[f"unknown tool: {name}"])
+            self._audit(audit, name, params, None, out, caller)
+            return out
         try:
             policy.check(level=spec.safety, network=spec.network)
         except SafetyViolation as e:
-            return Observation(name, Status.BLOCKED, "Blocked by safety policy", errors=[str(e)])
+            out = Observation(name, Status.BLOCKED, "Blocked by safety policy", errors=[str(e)])
+            self._audit(audit, name, params, spec, out, caller)
+            return out
         for dep in spec.requires:
             if dep in EXTERNAL_TOOL_NAMES and not external_tool_available(dep):
-                return Observation(
+                out = Observation(
                     name,
                     Status.UNSUPPORTED,
                     f"Required external tool not available: {dep}",
@@ -86,6 +99,8 @@ class ToolRegistry:
                         f"found on PATH or via its DFTK_*_TOOL_DIRS directory"
                     ],
                 )
+                self._audit(audit, name, params, spec, out, caller)
+                return out
         func = self._funcs[name]
         try:
             try:
@@ -101,7 +116,9 @@ class ToolRegistry:
                 if msg.startswith(qual + "(") or msg.startswith(
                     getattr(func, "__name__", "") + "("
                 ):
-                    return Observation(name, Status.ERROR, "Invalid parameters", errors=[msg])
+                    out = Observation(name, Status.ERROR, "Invalid parameters", errors=[msg])
+                    self._audit(audit, name, params, spec, out, caller)
+                    return out
                 raise
             if not isinstance(out, Observation):
                 raise TypeError("tool did not return Observation")
@@ -117,8 +134,23 @@ class ToolRegistry:
                 if not evidence.source_sha256 and known_hash:
                     evidence.source_sha256=known_hash
                 evidence.confidence=max(0.0,min(1.0,float(evidence.confidence)))
+            self._audit(audit, name, params, spec, out, caller)
             return out
         except Exception as e:
-            return Observation(name, Status.ERROR, "Tool execution failed", errors=[f"{type(e).__name__}: {e}"])
+            out = Observation(name, Status.ERROR, "Tool execution failed", errors=[f"{type(e).__name__}: {e}"])
+            self._audit(audit, name, params, spec, out, caller)
+            return out
+
+    @staticmethod
+    def _audit(
+        audit: ToolAuditLog | None,
+        name: str,
+        params: dict[str, Any],
+        spec: ToolSpec | None,
+        out: Observation,
+        caller: str,
+    ) -> None:
+        if audit is not None and isinstance(out, Observation):
+            audit.record(tool=name, params=params, observation=out, spec=spec, caller=caller)
 
 registry = ToolRegistry()

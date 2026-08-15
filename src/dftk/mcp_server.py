@@ -188,15 +188,26 @@ def _validate_params(value: Any, *, root: Path, key: str = "") -> None:
     if non_path_key or _is_url(value):
         return
 
-    # Known path-like parameter names are always constrained. For unknown string
-    # parameters, conservatively treat path-shaped values as filesystem paths.
-    # This closes the gap where a future primitive introduces a parameter such
-    # as ``apk`` or ``evidence`` without matching the path-key vocabulary.
+    # Known path-like parameter names (matched by _PATH_KEY_RE) and explicit
+    # path syntax (absolute, or "./" / "../" relative) are always validated by
+    # the branches above (path_key / _is_probably_absolute_path).
+    #
+    # For *unknown* string parameters we still want to constrain path-shaped
+    # values (e.g. a future primitive introduces an ``apk`` / ``evidence``
+    # parameter that does not match the path-key vocabulary). But we must NOT
+    # treat every string that merely contains a separator as a filesystem path:
+    # forensic parameters routinely carry separators in non-path text — Windows
+    # registry keys (``HKLM\Software…``), search patterns (``foo/bar``), log
+    # lines, or "key=value" assignments. Validating those as paths is wasted work
+    # and can wrongly reject valid opaque text.
+    #
+    # Rule: an unknown string is only validated as a path when it is a resolvable
+    # relative path under the evidence root (a real file/dir exists there) or a
+    # "./" / "../" relative reference. Bare separator text that is not a real
+    # path under root is treated as opaque and left alone.
     looks_relative_path = (
         value.startswith(("./", ".\\", "../", "..\\"))
-        or "/" in value
-        or "\\" in value
-        or (root / value).exists()
+        or (("/" in value or "\\" in value) and (root / value).exists())
     )
     if path_key or _is_probably_absolute_path(value) or looks_relative_path:
         _validate_path_value(value, root=root, key=key or "<value>")
@@ -256,6 +267,7 @@ class DFTKMCPGateway:
         max_safety: str = "READ_ONLY",
         allow_network: bool = False,
         timeout_seconds: int = _DEFAULT_TIMEOUT,
+        audit: str | Path | bool = False,
     ) -> None:
         self.root = Path(root).expanduser().resolve()
         self.workspace = Path(workspace).expanduser()
@@ -271,6 +283,16 @@ class DFTKMCPGateway:
         self.allow_network = bool(allow_network)
         self.timeout_seconds = min(max(1, int(timeout_seconds)), 3600)
         self._lock = threading.RLock()
+        # Audit ledger (chain-of-custody). When enabled, every capability run is
+        # recorded to a JSONL file. ``True`` uses the workspace default; a path
+        # (resolved under the workspace when relative) overrides the location.
+        if audit is True:
+            self.audit_path = self.workspace / "audit.jsonl"
+        elif isinstance(audit, (str, Path)):
+            p = Path(audit)
+            self.audit_path = p if p.is_absolute() else self.workspace / p
+        else:
+            self.audit_path = None
 
     def preflight(self) -> dict[str, Any]:
         if not self.root.exists() or not self.root.is_dir():
@@ -390,6 +412,8 @@ class DFTKMCPGateway:
             "max_safety": self.max_safety,
             "allow_network": self.allow_network,
         }
+        if self.audit_path is not None:
+            request["audit"] = str(self.audit_path)
         if case_id:
             session = CaseSession(self.workspace)
             _require_case(session, case_id)
@@ -547,6 +571,7 @@ def run_mcp_server(
     max_safety: str = "READ_ONLY",
     allow_network: bool = False,
     timeout_seconds: int = _DEFAULT_TIMEOUT,
+    audit: str | Path | bool = False,
 ) -> None:
     """Run the local stdio MCP server. stdout is reserved for MCP framing."""
     gateway = DFTKMCPGateway(
@@ -555,6 +580,7 @@ def run_mcp_server(
         max_safety=max_safety,
         allow_network=allow_network,
         timeout_seconds=timeout_seconds,
+        audit=audit,
     )
     # Any import-time noise from optional parsers is redirected away from stdio.
     with redirect_stdout(sys.stderr):
