@@ -61,6 +61,26 @@ def test_mcp_stateful_is_server_owned(tmp_path: Path):
     assert result["status"] == "blocked"
 
 
+def test_mcp_run_ok_reflects_observation_status(tmp_path: Path):
+    # Regression: the top-level ok MUST mirror observation.status so a client
+    # that branches on ok does not mistake an unsupported/error run for success.
+    gateway = DFTKMCPGateway(root=tmp_path)
+    gateway.preflight()
+
+    src = tmp_path / "sample.bin"
+    src.write_bytes(b"evidence")
+
+    ok_result = gateway.run("file.hash", {"path": str(src)})
+    assert ok_result["ok"] is True
+    assert ok_result["observation"]["status"] == "ok"
+
+    # Missing required parameter -> structured error, not a masked success.
+    err_result = gateway.run("file.hash", {})
+    assert err_result["ok"] is False
+    assert err_result["observation"]["status"] == "error"
+    assert err_result["observation"]["errors"]
+
+
 def test_mcp_tool_surface_is_six(tmp_path: Path):
     # dev extra pins MCP so release CI performs a real in-memory client/server
     # round trip. Minimal/base environments may intentionally omit the extra.

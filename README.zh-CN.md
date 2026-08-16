@@ -10,7 +10,7 @@ DFTK 是一个 Python 工具包，提供默认只读、结构化的取证操作�
 > 🇺🇸 English: [README.md](README.md)
 
 - **发布名：** `dftk` · **导入包名：** `dftk` · **命令行命令：** `dftk`
-- **维护者：** [DyNooob](https://github.com/DyNooob) — DigiForensics
+- **维护者：** [DyNooob](https://github.com/DyNooob) — DigiForensics · [博客](https://buno.dev)
 - **所属组织：** [DigiForensics](https://www.digiforensics.cn) · [LLMCN](https://www.llmcn.org)
 - **许可证：** [Apache-2.0](LICENSE)
 
@@ -192,7 +192,7 @@ meta         工具与运行元数据
 
 ## 能力模型
 
-DFTK 3.2.1 包含 **72 个工具**（71 个 `READ_ONLY`、1 个 `STATEFUL`）和 **14 个配方**，覆盖：
+DFTK 3.3.0 包含 **72 个工具**（71 个 `READ_ONLY`、1 个 `STATEFUL`）和 **14 个配方**，覆盖：
 
 - 取证对象识别、哈希、字符串、搜索与时间线；
 - APK、DEX、二进制 AXML、Android 应用数据与端点提取；
@@ -233,7 +233,7 @@ DFTK 把"执行安全"与"取证推理"分开：
 |------|------|
 | `READ_ONLY` | 读取证据或不可变 / 只读视图 |
 | `STATEFUL` | 可写入派生的临时工作区，但不修改原始证据 |
-| `DESTRUCTIVE` | 保留给会修改目标的操作；**3.2.1 中未注册任何此类工具** |
+| `DESTRUCTIVE` | 保留给会修改目标的操作；**3.3.0 中未注册任何此类工具** |
 
 默认策略只允许 `READ_ONLY` 操作。网络访问独立受控，必须通过 `--allow-network` 显式开启。受控的归档解压（`archive.extract_safe`）为 `STATEFUL`，除非调用方显式提升安全上限，否则会被拦截：
 

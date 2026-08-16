@@ -10,7 +10,7 @@ DFTK is a Python toolkit that exposes read-only, structured forensic operations.
 > 🇨🇳 中文文档：[README.zh-CN.md](README.zh-CN.md)
 
 - **Distribution name:** `dftk` · **Import package:** `dftk` · **CLI command:** `dftk`
-- **Maintainer:** [DyNooob](https://github.com/DyNooob) — DigiForensics
+- **Maintainer:** [DyNooob](https://github.com/DyNooob) — DigiForensics · [blog](https://buno.dev)
 - **Organizations:** [DigiForensics](https://www.digiforensics.cn) · [LLMCN](https://www.llmcn.org)
 - **License:** [Apache-2.0](LICENSE)
 
@@ -196,7 +196,7 @@ meta         tool and run metadata
 
 ## Capability model
 
-DFTK 3.2.1 contains a registry of **72 tools** (71 `READ_ONLY`, 1 `STATEFUL`) and **14 recipes** spanning:
+DFTK 3.3.0 contains a registry of **72 tools** (71 `READ_ONLY`, 1 `STATEFUL`) and **14 recipes** spanning:
 
 - artifact identification, hashing, strings, search and timeline;
 - APK, DEX, binary AXML, Android app data and endpoint extraction;
@@ -237,7 +237,7 @@ DFTK separates execution safety from forensic reasoning:
 |-------|----------|
 | `READ_ONLY` | reads evidence or immutable / read-only views |
 | `STATEFUL` | may write derived workspace output without changing source evidence |
-| `DESTRUCTIVE` | reserved for target-modifying actions; **not registered** in 3.2.1 |
+| `DESTRUCTIVE` | reserved for target-modifying actions; **not registered** in 3.3.0 |
 
 The default policy allows only `READ_ONLY` operations. Network access is independently gated and must be enabled with `--allow-network`. Controlled archive extraction (`archive.extract_safe`) is `STATEFUL` and blocked unless the caller explicitly raises the ceiling:
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dftk"
-version = "3.2.1"
+version = "3.3.0"
 description = "Evidence-preserving digital forensics primitives and composable workflows for analysts, automation systems, and autonomous agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -52,6 +52,7 @@ Homepage = "https://www.digiforensics.cn"
 Documentation = "https://www.digiforensics.cn"
 DigiForensics = "https://www.digiforensics.cn"
 LLMCN = "https://www.llmcn.org"
+Blog = "https://buno.dev"
 Source = "https://github.com/DigiForensics/DFTK"
 Issues = "https://github.com/DigiForensics/DFTK/issues"
 

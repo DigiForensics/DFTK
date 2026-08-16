@@ -29,6 +29,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# WorkBuddy project memory (never commit)
+.workbuddy/
+
 # Local tool output
 workspace/
 extracted/

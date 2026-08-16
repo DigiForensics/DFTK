@@ -1,11 +1,11 @@
 # Agent integration
 
-DFTK 3.2.1 provides two Agent-facing interfaces:
+DFTK 3.3.0 provides two Agent-facing interfaces:
 
 1. the complete `DFTK-skill` investigation guidance;
 2. native local stdio MCP backed directly by DFTK Registry / Observation / CaseSession.
 
-The MCP server is deliberately local and stdio-only in 3.2.1.
+The MCP server is deliberately local and stdio-only in 3.3.0.
 
 ## Install
 

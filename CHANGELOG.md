@@ -2,7 +2,7 @@
 
 All notable public changes to DFTK are recorded here.
 
-## Unreleased — Chain-of-custody audit log, robustness fixes
+## 3.3.0 — Chain-of-custody audit ledger & robustness (2026-08-16)
 
 New:
 
@@ -21,6 +21,7 @@ Fixed:
 - `dftk skill --install` no longer copies VCS/CI metadata (`.git`, `.gitignore`, `.github`) into the installed Agent skill directory.
 - `archive.inventory` streams the archive central directory and stops after `limit` members instead of materializing the entire directory up front, so peak memory stays proportional to `limit` on very large archives (ZIP and TAR).
 - The tool runner now distinguishes caller parameter errors from internal tool bugs: a `TypeError` raised while *binding* the call is reported as `Invalid parameters`, while a `TypeError` raised inside a tool body surfaces as `Tool execution failed` rather than being misreported as a caller mistake.
+- The MCP server (`dftk mcp`) previously returned top-level `ok: true` for **every** capability run regardless of the underlying `observation.status`, so a client that branched on `ok` could mistake an `unsupported`/`error` run for success. The server now derives the top-level `ok` from `observation.status` (`ok` / `partial` → `true`; `unsupported` / `error` / `blocked` → `false`), and the gateway distinguishes a genuine worker crash (marked `error_type`) from a semantic failure (which carries a real `Observation` with `status` and `errors`). Client guidance was updated accordingly in the Skill.
 
 ## 3.2.1 — External tool discovery on POSIX
 

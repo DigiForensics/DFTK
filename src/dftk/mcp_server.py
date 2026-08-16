@@ -99,11 +99,12 @@ def _bounded_run_result(result: dict[str, Any]) -> dict[str, Any]:
     raw = _safe_json_bytes(result)
     if len(raw) <= _MAX_MODEL_RESULT_BYTES:
         return result
+    ok = result.get("ok")
     obs = result.get("observation") or {}
     evidence = list(obs.get("evidence") or []) if isinstance(obs, dict) else []
     facts = obs.get("facts") or {} if isinstance(obs, dict) else {}
     compact = {
-        "ok": True,
+        "ok": ok,
         "case_id": result.get("case_id"),
         "case_run": result.get("case_run"),
         "truncated": True,
@@ -389,8 +390,15 @@ class DFTKMCPGateway:
             if not resp.exists():
                 raise RuntimeError(f"DFTK worker exited {proc.returncode} without a response")
             data = _read_json(resp)
-            if not data.get("ok"):
-                raise RuntimeError(f"DFTK worker {data.get('error_type', 'error')}: {data.get('error', 'unknown error')}")
+            # A genuine crash is marked with ``error_type`` and carries no
+            # structured Observation (see mcp_worker.main). A semantic failure
+            # (unsupported / error) returns a normal Observation with ``ok:
+            # False`` and MUST be returned so the caller can read
+            # observation.status and observation.errors. Raising here would
+            # discard that structured failure and replace it with a generic
+            # RuntimeError.
+            if "error_type" in data:
+                raise RuntimeError(f"DFTK worker {data.get('error_type')}: {data.get('error', 'unknown error')}")
             return data
 
     def run(self, name: str, params: dict[str, Any] | None = None, case_id: str | None = None) -> dict[str, Any]:
@@ -425,7 +433,7 @@ class DFTKMCPGateway:
             data = self._worker(request)
         observation = dict(data["observation"])
         result = {
-            "ok": True,
+            "ok": bool(data.get("ok")),
             "case_id": case_id,
             "observation": observation,
         }

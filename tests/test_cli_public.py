@@ -14,6 +14,7 @@
 
 import pytest
 
+from dftk import __version__
 from dftk.cli import main
 
 
@@ -21,4 +22,4 @@ def test_cli_version(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert capsys.readouterr().out.strip() == "dftk 3.2.1"
+    assert capsys.readouterr().out.strip() == f"dftk {__version__}"

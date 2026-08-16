@@ -19,6 +19,11 @@ import traceback
 _CAPTURE_CHARS = 20_000
 _MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 
+# Observation statuses that represent a usable result. Anything else
+# (error / unsupported / blocked) means the run did not produce evidence
+# the caller should rely on — the top-level `ok` must be False for those.
+_SUCCESS_STATUSES = {"ok", "partial"}
+
 
 class _TailCapture(io.TextIOBase):
     def __init__(self, limit: int = _CAPTURE_CHARS) -> None:
@@ -96,7 +101,10 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
             allow_network=allow_network,
         )
         obs = registry.run(name, params, policy, audit=audit, caller=caller)
-        return {"ok": True, "observation": obs.to_dict()}
+        obs_d = obs.to_dict()
+        # The top-level ok MUST mirror the observation status so a client that
+        # branches on ok does not mistake an unsupported/error run for success.
+        return {"ok": obs_d.get("status") in _SUCCESS_STATUSES, "observation": obs_d}
 
     if action == "case_run":
         workspace = Path(str(request["workspace"]))
@@ -111,7 +119,12 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
             audit=audit,
             caller=f"mcp:case:{case_id}",
         )
-        return {"ok": True, "observation": obs.to_dict(), "case_run": entry}
+        obs_d = obs.to_dict()
+        return {
+            "ok": obs_d.get("status") in _SUCCESS_STATUSES,
+            "observation": obs_d,
+            "case_run": entry,
+        }
 
     raise ValueError(f"unknown worker action: {action!r}")
 
