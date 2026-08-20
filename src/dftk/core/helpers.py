@@ -78,18 +78,25 @@ def read_file_bounded(path: str | os.PathLike[str], max_bytes: int = DEFAULT_MAX
     return p.read_bytes(), None
 
 def read_file_bounded_observation(name: str, path: str | os.PathLike[str], max_bytes: int = DEFAULT_MAX_READ):
-    """Like :func:`read_file_bounded`, but returns ``(data, None)`` or ``(None, Observation)``.
+    """Like :func:`read_file_bounded`, but returns ``(data, None, sha256)`` on success
+    or ``(None, Observation, None)`` on failure.
 
-    On oversized input the Observation is ``UNSUPPORTED``; on a stat/read failure it is ``ERROR``.
-    Both carry the source SHA-256 so the caller can return them directly.
+    The SHA-256 is hashed from the in-memory ``data`` in a single pass, so callers
+    must NOT re-read the file from disk to hash it (that would double the I/O and
+    memory pressure on large evidence). On oversized input the Observation is
+    ``UNSUPPORTED``; on a stat/read failure it is ``ERROR``. We deliberately do not
+    hash in those branches: hashing would force the very full read we are avoiding.
     """
     from .models import Observation, Status
     data, err = read_file_bounded(path, max_bytes)
-    if err is None:
-        return data, None
-    if err["kind"] == "too_large":
-        return None, Observation(name, Status.UNSUPPORTED, "File exceeds in-memory read limit",
-                                 errors=[f"size={err['size']} > limit={err['limit']}"],
-                                 meta={"source_sha256": sha256_file(path)})
-    return None, Observation(name, Status.ERROR, "File read failed", errors=[err["error"]],
-                             meta={"source_sha256": sha256_file(path)})
+    if err is not None:
+        if err["kind"] == "too_large":
+            return (None,
+                    Observation(name, Status.UNSUPPORTED, "File exceeds in-memory read limit",
+                                errors=[f"size={err['size']} > limit={err['limit']}"]),
+                    None)
+        return (None,
+                Observation(name, Status.ERROR, "File read failed", errors=[err["error"]]),
+                None)
+    source_sha256 = hashlib.sha256(data).hexdigest()
+    return data, None, source_sha256

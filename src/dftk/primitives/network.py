@@ -18,7 +18,7 @@ import struct,socket,re
 from collections import Counter
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Evidence,Status,SafetyLevel
-from dftk.core.helpers import sha256_file, read_file_bounded_observation
+from dftk.core.helpers import read_file_bounded_observation
 
 class PcapError(ValueError): pass
 
@@ -29,13 +29,13 @@ def _ip(b): return socket.inet_ntoa(b)
 def pcap_inventory(path:str,packet_limit:int=200000,sample_limit:int=200)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation("network.pcap_inventory",Status.ERROR,"PCAP not found",errors=[str(p)])
-    data,err=read_file_bounded_observation('network.pcap_inventory',p,4*1024*1024*1024)
+    data,err,src=read_file_bounded_observation('network.pcap_inventory',p,4*1024*1024*1024)
     if err: return err
-    if len(data)<24: return Observation("network.pcap_inventory",Status.UNSUPPORTED,"PCAP too small",meta={"source_sha256":sha256_file(p)})
+    if len(data)<24: return Observation("network.pcap_inventory",Status.UNSUPPORTED,"PCAP too small",meta={"source_sha256":src})
     magic=data[:4]
     fmts={b'\xd4\xc3\xb2\xa1':('<',False),b'\xa1\xb2\xc3\xd4':('>',False),b'M<\xb2\xa1':('<',True),b'\xa1\xb2<M':('>',True)}
     if magic not in fmts:
-        return Observation("network.pcap_inventory",Status.UNSUPPORTED,"Only classic PCAP is supported (not PCAPNG)",meta={"source_sha256":sha256_file(p)})
+        return Observation("network.pcap_inventory",Status.UNSUPPORTED,"Only classic PCAP is supported (not PCAPNG)",meta={"source_sha256":src})
     endian,nano=fmts[magic]; network=struct.unpack_from(endian+'I',data,20)[0]
     off=24; count=0; proto=Counter(); endpoints=Counter(); samples=[]; malformed=0
     while off+16<=len(data) and count<packet_limit:
@@ -59,7 +59,7 @@ def pcap_inventory(path:str,packet_limit:int=200000,sample_limit:int=200)->Obser
     if malformed: warnings.append("truncated/malformed packet encountered")
     if count>=packet_limit: warnings.append(f"packet parsing limited to {packet_limit}")
     top=[{"flow":k,"packets":v} for k,v in endpoints.most_common(100)]
-    return Observation("network.pcap_inventory",Status.PARTIAL if malformed else Status.OK,f"Parsed {count} packet(s)",facts={"linktype":network,"packet_count":count,"protocol_counts":dict(proto),"top_flows":top,"samples":samples},evidence=[Evidence(str(p),'pcap_summary',f"{count} packets",locator='pcap-records')],warnings=warnings,meta={"source_sha256":sha256_file(p)})
+    return Observation("network.pcap_inventory",Status.PARTIAL if malformed else Status.OK,f"Parsed {count} packet(s)",facts={"linktype":network,"packet_count":count,"protocol_counts":dict(proto),"top_flows":top,"samples":samples},evidence=[Evidence(str(p),'pcap_summary',f"{count} packets",locator='pcap-records')],warnings=warnings,meta={"source_sha256":src})
 
 # ---- PCAPNG and lightweight application-protocol extraction ----
 
@@ -253,7 +253,7 @@ def _tls_sni(payload:bytes):
 def pcapng_inventory(path:str,packet_limit:int=200000,sample_limit:int=200)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('network.pcapng_inventory',Status.ERROR,'PCAPNG not found',errors=[str(p)])
-    data,err=read_file_bounded_observation('network.pcapng_inventory',p,4*1024*1024*1024)
+    data,err,src=read_file_bounded_observation('network.pcapng_inventory',p,4*1024*1024*1024)
     if err: return err
     flows=Counter(); protos=Counter(); samples=[]; count=0; unsupported_links=Counter()
     try:
@@ -266,10 +266,10 @@ def pcapng_inventory(path:str,packet_limit:int=200000,sample_limit:int=200)->Obs
             key=f"{ip['src']}:{ip['src_port'] or 0}->{ip['dst']}:{ip['dst_port'] or 0}/{name}"; flows[key]+=1
             if len(samples)<sample_limit: samples.append({'packet':num,'timestamp':ts,'src':ip['src'],'dst':ip['dst'],'protocol':name,'src_port':ip['src_port'],'dst_port':ip['dst_port']})
     except PcapError as e:
-        return Observation('network.pcapng_inventory',Status.UNSUPPORTED,'PCAPNG parsing failed',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
+        return Observation('network.pcapng_inventory',Status.UNSUPPORTED,'PCAPNG parsing failed',errors=[str(e)],meta={'source_sha256':src})
     warnings=[f'unsupported linktype {k}: {v} packet(s)' for k,v in unsupported_links.items()]
     if count>=packet_limit: warnings.append(f'packet parsing limited to {packet_limit}')
-    return Observation('network.pcapng_inventory',Status.PARTIAL if unsupported_links else Status.OK,f'Parsed {count} PCAPNG packet(s)',facts={'packet_count':count,'protocol_counts':dict(protos),'top_flows':[{'flow':k,'packets':v} for k,v in flows.most_common(100)],'samples':samples},evidence=[Evidence(str(p),'pcapng_summary',count,locator='blocks')],warnings=warnings,meta={'source_sha256':sha256_file(p)})
+    return Observation('network.pcapng_inventory',Status.PARTIAL if unsupported_links else Status.OK,f'Parsed {count} PCAPNG packet(s)',facts={'packet_count':count,'protocol_counts':dict(protos),'top_flows':[{'flow':k,'packets':v} for k,v in flows.most_common(100)],'samples':samples},evidence=[Evidence(str(p),'pcapng_summary',count,locator='blocks')],warnings=warnings,meta={'source_sha256':src})
 
 @registry.tool(name='network.capture_protocols',description='Extract bounded DNS questions, plaintext HTTP requests and TLS ClientHello SNI from classic PCAP or PCAPNG.',
  safety=SafetyLevel.READ_ONLY,tags=('network','protocols','pcap'),produces=('dns_queries','http_requests','tls_sni'),cost_hint='medium',
@@ -277,11 +277,11 @@ def pcapng_inventory(path:str,packet_limit:int=200000,sample_limit:int=200)->Obs
 def capture_protocols(path:str,packet_limit:int=200000,limit:int=5000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('network.capture_protocols',Status.ERROR,'Capture not found',errors=[str(p)])
-    data,err=read_file_bounded_observation('network.capture_protocols',p,4*1024*1024*1024)
+    data,err,src=read_file_bounded_observation('network.capture_protocols',p,4*1024*1024*1024)
     if err: return err
     dns=[]; dns_ans=[]; http=[]; http_resp=[]; tls=[]; warnings=[]; count=0
     try: packets,fmt=_capture_packets(data,packet_limit)
-    except PcapError as e: return Observation('network.capture_protocols',Status.UNSUPPORTED,'Unsupported capture',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
+    except PcapError as e: return Observation('network.capture_protocols',Status.UNSUPPORTED,'Unsupported capture',errors=[str(e)],meta={'source_sha256':src})
     try:
         for num,link,ts,pkt in packets:
             count=num
@@ -314,4 +314,4 @@ def capture_protocols(path:str,packet_limit:int=200000,limit:int=5000)->Observat
     for r in http[:100]: ev.append(Evidence(str(p),'http_request',f"{r['method']} {r['host'] or ''}{r['target']}",locator=f"packet:{r['packet']}",method='HTTP/1 request parser'))
     for r in http_resp[:100]: ev.append(Evidence(str(p),'http_response',f"{r['status']} {r.get('server') or ''}",locator=f"packet:{r['packet']}",method='HTTP/1 response parser'))
     for r in tls[:100]: ev.append(Evidence(str(p),'tls_sni',r['server_name'],locator=f"packet:{r['packet']}",method='TLS ClientHello parser'))
-    return Observation('network.capture_protocols',Status.PARTIAL if warnings else Status.OK,f'Extracted {len(dns)} DNS q, {len(dns_ans)} DNS ans, {len(http)} HTTP req, {len(http_resp)} HTTP resp, {len(tls)} TLS SNI',facts={'format':fmt,'dns_questions':dns,'dns_answers':dns_ans,'http_requests':http,'http_responses':http_resp,'tls_sni':tls,'packets_scanned':count},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
+    return Observation('network.capture_protocols',Status.PARTIAL if warnings else Status.OK,f'Extracted {len(dns)} DNS q, {len(dns_ans)} DNS ans, {len(http)} HTTP req, {len(http_resp)} HTTP resp, {len(tls)} TLS SNI',facts={'format':fmt,'dns_questions':dns,'dns_answers':dns_ans,'http_requests':http,'http_responses':http_resp,'tls_sni':tls,'packets_scanned':count},evidence=ev,warnings=warnings,meta={'source_sha256':src})

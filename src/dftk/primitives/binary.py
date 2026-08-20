@@ -17,7 +17,7 @@ from pathlib import Path
 import struct,re
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Evidence,Status,SafetyLevel
-from dftk.core.helpers import printable_strings, sha256_file, read_file_bounded_observation
+from dftk.core.helpers import printable_strings, read_file_bounded_observation
 
 MACHINES={3:"x86",40:"ARM",62:"x86-64",183:"AArch64",243:"RISC-V"}
 
@@ -64,14 +64,14 @@ def parse_elf(data:bytes):
 def elf_inventory(path:str,strings:bool=True,string_limit:int=2000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation("binary.elf_inventory",Status.ERROR,"ELF file not found",errors=[str(p)])
-    data,err=read_file_bounded_observation('binary.elf_inventory',p,512*1024*1024)
+    data,err,src=read_file_bounded_observation('binary.elf_inventory',p,512*1024*1024)
     if err: return err
     try: info=parse_elf(data)
-    except ElfError as e: return Observation("binary.elf_inventory",Status.UNSUPPORTED,"ELF parsing failed",errors=[str(e)],meta={"source_sha256":sha256_file(p)})
+    except ElfError as e: return Observation("binary.elf_inventory",Status.UNSUPPORTED,"ELF parsing failed",errors=[str(e)],meta={"source_sha256":src})
     rows=printable_strings(data,4)[:string_limit] if strings else []
     info["strings"]=[{"offset":o,"value":s} for o,s in rows]
     ev=[Evidence(str(p),"elf_section",s["name"],locator=f"offset:{s['offset']};size:{s['size']}") for s in info["sections"]]
-    return Observation("binary.elf_inventory",Status.OK,f"Parsed ELF{info['class']} with {len(info['sections'])} sections",facts=info,evidence=ev,meta={"source_sha256":sha256_file(p)})
+    return Observation("binary.elf_inventory",Status.OK,f"Parsed ELF{info['class']} with {len(info['sections'])} sections",facts=info,evidence=ev,meta={"source_sha256":src})
 
 PE_MACHINES={0x014c:'x86',0x8664:'x86-64',0x01c0:'ARM',0xaa64:'ARM64'}
 
@@ -81,9 +81,9 @@ PE_MACHINES={0x014c:'x86',0x8664:'x86-64',0x01c0:'ARM',0xaa64:'ARM64'}
 def pe_inventory(path:str,strings:bool=False,string_limit:int=2000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('binary.pe_inventory',Status.ERROR,'PE file not found',errors=[str(p)])
-    data,err=read_file_bounded_observation('binary.pe_inventory',p,512*1024*1024)
+    data,err,src=read_file_bounded_observation('binary.pe_inventory',p,512*1024*1024)
     if err: return err
-    h=sha256_file(p)
+    h=src
     if len(data)<0x40 or data[:2]!=b'MZ': return Observation('binary.pe_inventory',Status.UNSUPPORTED,'Not an MZ/PE file',meta={'source_sha256':h})
     peoff=struct.unpack_from('<I',data,0x3c)[0]
     if peoff+24>len(data) or data[peoff:peoff+4]!=b'PE\0\0': return Observation('binary.pe_inventory',Status.UNSUPPORTED,'PE signature not found',meta={'source_sha256':h})
@@ -109,7 +109,7 @@ def pe_inventory(path:str,strings:bool=False,string_limit:int=2000)->Observation
 def native_indicator_scan(path:str,limit:int=1000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('binary.native_indicator_scan',Status.ERROR,'Binary not found',errors=[str(p)])
-    data,err=read_file_bounded_observation('binary.native_indicator_scan',p,512*1024*1024)
+    data,err,src=read_file_bounded_observation('binary.native_indicator_scan',p,512*1024*1024)
     if err: return err
     rows=printable_strings(data,4); categories={
         'jni':re.compile(r'(?:Java_[A-Za-z0-9_]+|JNI_OnLoad|RegisterNatives)'),
@@ -127,4 +127,4 @@ def native_indicator_scan(path:str,limit:int=1000)->Observation:
         if len(hits)>=limit: break
     warnings=['indicator scan is heuristic and must be corroborated with structural/disassembly evidence']
     if len(hits)>=limit: warnings.append(f'results limited to {limit}')
-    return Observation('binary.native_indicator_scan',Status.OK,f'Found {len(hits)} native indicator string(s)',facts={'matches':hits},evidence=ev[:300],warnings=warnings,meta={'source_sha256':sha256_file(p)})
+    return Observation('binary.native_indicator_scan',Status.OK,f'Found {len(hits)} native indicator string(s)',facts={'matches':hits},evidence=ev[:300],warnings=warnings,meta={'source_sha256':src})

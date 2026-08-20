@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 from pathlib import Path
-import struct, tarfile, zipfile, os
+import struct, tarfile, zipfile, os, re
 from dftk.core.registry import registry
 from dftk.core.models import Observation, Evidence, Status, SafetyLevel
 from dftk.core.helpers import hash_file, sha256_file, printable_strings, read_file_bounded_observation
@@ -59,7 +59,7 @@ def file_strings(path: str, min_length: int = 4, limit: int = 5000) -> Observati
     # Bound the in-memory read so very large evidence cannot exhaust RAM
     # (DEFAULT_MAX_READ caps the whole-file load). On oversize input the
     # helper returns an UNSUPPORTED Observation carrying the source hash.
-    data, err = read_file_bounded_observation("file.strings", p)
+    data, err, src = read_file_bounded_observation("file.strings", p)
     if err is not None:
         return err
     rows=printable_strings(data,min_length)[:limit]
@@ -68,24 +68,41 @@ def file_strings(path: str, min_length: int = 4, limit: int = 5000) -> Observati
     if len(rows)>=limit: warnings.append(f"result limited to {limit} strings")
     return Observation("file.strings",Status.OK,f"Extracted {len(rows)} printable strings",
         facts={"count":len(rows),"strings":[{"offset":o,"value":s} for o,s in rows]}, evidence=ev,
-        warnings=warnings, meta={"source_sha256":sha256_file(p)})
+        warnings=warnings, meta={"source_sha256":src})
 
 _CDFH_SIG = b"PK\x01\x02"  # central directory file header
 _EOCD_SIG = b"PK\x05\x06"   # end of central directory
+_ZIP64_EOCD_LOC_SIG = b"PK\x06\x07"  # zip64 end of central directory locator
+_ZIP64_EOCD_SIG = b"PK\x06\x06"      # zip64 end of central directory record
 
 
 def _zip_central_dir_offset(path: str):
-    """Locate the central directory start via the EOCD record.
+    """Locate the central directory start.
 
     Returns ``(cd_offset, cd_size, comment_len)`` or ``None`` when the EOCD
-    cannot be found (e.g. a truncated/Zip64-only archive). The caller then
-    falls back to the stdlib reader.
+    cannot be read (e.g. a truncated archive). For Zip64 archives whose central
+    directory offset/size exceed 4 GiB, the classic EOCD carries 0xFFFFFFFF
+    sentinels; in that case the Zip64 EOCD record is parsed for the real values.
+    If no usable offset is found, the caller falls back to the stdlib reader.
     """
     size = os.path.getsize(path)
     max_scan = min(size, 22 + 0xFFFF)
     with open(path, "rb") as f:
         f.seek(size - max_scan)
         tail = f.read(max_scan)
+    # Prefer the Zip64 end-of-central-directory locator (the last zip64
+    # structure, placed just before the classic EOCD).
+    idx64 = tail.rfind(_ZIP64_EOCD_LOC_SIG)
+    if idx64 != -1 and len(tail) - idx64 >= 20:
+        loc_off = struct.unpack_from("<Q", tail, idx64 + 8)[0]
+        if 0 <= loc_off and loc_off + 56 <= size:
+            with open(path, "rb") as f2:
+                f2.seek(loc_off)
+                zrec = f2.read(56)
+            if len(zrec) == 56 and zrec[:4] == _ZIP64_EOCD_SIG:
+                (_zsize, _vm, _vn, _disk, _cd_disk, _te_disk, _te,
+                 cd_size, cd_offset) = struct.unpack_from("<QHHIIQQQQ", zrec, 4)
+                return cd_offset, cd_size, 0
     idx = tail.rfind(_EOCD_SIG)
     if idx == -1:
         return None
@@ -96,6 +113,12 @@ def _zip_central_dir_offset(path: str):
         return None
     (_disk, _cd_disk, _d_entries, _t_entries,
      cd_size, cd_offset, comment_len) = struct.unpack_from("<HHHHIIH", tail, off)
+    # A 0xFFFFFFFF sentinel means the real values live in the Zip64 record,
+    # which we failed to locate above (truncated/malformed Zip64). Fall back to
+    # the stdlib reader rather than seeking to a bogus offset (which previously
+    # silently reported 0 members).
+    if cd_offset == 0xFFFFFFFF or cd_size == 0xFFFFFFFF:
+        return None
     return cd_offset, cd_size, comment_len
 
 
@@ -164,7 +187,11 @@ def archive_inventory(path: str, limit: int = 10000) -> Observation:
                     ti = t.next()
                     if ti is None:
                         break
-                    members.append({"name":ti.name,"size":ti.size,"type":ti.type.decode("latin1") if isinstance(ti.type,bytes) else str(ti.type),"is_dir":ti.isdir()})
+                    ttype = ("dir" if ti.isdir() else "file" if ti.isfile() else
+                             "symlink" if ti.issym() else "hardlink" if ti.islnk() else
+                             "fifo" if ti.isfifo() else "chr" if ti.ischr() else
+                             "blk" if ti.isblk() else "other")
+                    members.append({"name":ti.name,"size":ti.size,"type":ttype,"is_dir":ti.isdir()})
         else:
             return Observation("archive.inventory",Status.UNSUPPORTED,"Unsupported archive format",meta={"source_sha256":sha256_file(p)})
     except Exception as e:
@@ -236,10 +263,9 @@ def archive_extract_safe(path:str,output_dir:str,member_limit:int=20000,total_si
  safety=SafetyLevel.READ_ONLY,tags=('file','strings','unicode'),produces=('strings',),
  parameters={'type':'object','properties':{'path':{'type':'string'},'min_length':{'type':'integer','default':4},'limit':{'type':'integer','default':5000}},'required':['path']})
 def file_strings_unicode(path:str,min_length:int=4,limit:int=5000)->Observation:
-    import re
     p=Path(path)
     if not p.is_file(): return Observation('file.strings_unicode',Status.ERROR,'Input is not a file',errors=[str(p)])
-    data, err = read_file_bounded_observation('file.strings_unicode', p)
+    data, err, src = read_file_bounded_observation('file.strings_unicode', p)
     if err is not None:
         return err
     rows=[]
@@ -253,4 +279,4 @@ def file_strings_unicode(path:str,min_length:int=4,limit:int=5000)->Observation:
         if len(rows)>=limit: break
     rows.sort(key=lambda x:(x['offset'],x['encoding']))
     ev=[Evidence(str(p),'unicode_string',r['value'],locator=f"offset:{r['offset']};encoding:{r['encoding']}") for r in rows[:300]]
-    return Observation('file.strings_unicode',Status.OK,f'Extracted {len(rows)} UTF-16 string(s)',facts={'strings':rows},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':sha256_file(p)})
+    return Observation('file.strings_unicode',Status.OK,f'Extracted {len(rows)} UTF-16 string(s)',facts={'strings':rows},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':src})

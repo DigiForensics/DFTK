@@ -210,10 +210,10 @@ def mft(path: str, record_limit: int = 200000, deleted_only: bool = False) -> Ob
     p = Path(path)
     if not p.is_file():
         return Observation("windows.mft", Status.ERROR, "MFT file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("windows.mft", p, 8 * 1024 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("windows.mft", p, 8 * 1024 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     records: list[dict] = []
     parents: dict[int, tuple[str, int]] = {}
     stride = 1024
@@ -306,10 +306,10 @@ def prefetch(path: str) -> Observation:
     p = Path(path)
     if not p.is_file():
         return Observation("windows.prefetch", Status.ERROR, "Prefetch file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("windows.prefetch", p, 64 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("windows.prefetch", p, 64 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     if len(data) < 0x54 or data[4:8] != b"SCCA":
         return Observation("windows.prefetch", Status.UNSUPPORTED, "Not a Prefetch (SCCA) file",
                            errors=["missing SCCA signature"], meta={"source_sha256": h})
@@ -415,10 +415,10 @@ def lnk(path: str) -> Observation:
     p = Path(path)
     if not p.is_file():
         return Observation("windows.lnk", Status.ERROR, "LNK file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("windows.lnk", p, 16 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("windows.lnk", p, 16 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     if len(data) < 0x4C or _u32(data, 0) != 0x4C:
         return Observation("windows.lnk", Status.UNSUPPORTED, "Not a Shell Link (.lnk) file",
                            errors=["header size != 0x4C"], meta={"source_sha256": h})
@@ -518,10 +518,10 @@ def recyclebin(path: str, find_data: bool = True) -> Observation:
     if not name.startswith("$I"):
         return Observation("windows.recyclebin", Status.UNSUPPORTED, "File is not a $I Recycle Bin metadata file",
                            errors=[f"name={name}"], meta={"source_sha256": sha256_file(p)})
-    data, err = read_file_bounded_observation("windows.recyclebin", p, 1 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("windows.recyclebin", p, 1 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     if len(data) < 0x18:
         return Observation("windows.recyclebin", Status.UNSUPPORTED, "$I file too small", meta={"source_sha256": h})
     version = _u32(data, 0)

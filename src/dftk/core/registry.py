@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 from collections.abc import Callable
+import inspect
 from typing import Any
 from dataclasses import replace
 from .models import Observation, Status, ToolSpec, SafetyLevel
@@ -103,23 +104,22 @@ class ToolRegistry:
                 return out
         func = self._funcs[name]
         try:
+            # Validate the caller's parameters before invoking. A binding
+            # failure (missing required arg / unexpected keyword) is a caller
+            # mistake and is reported as such; any TypeError raised *inside*
+            # the tool body is a tool bug and is reported as an execution
+            # failure by the outer handler. This avoids relying on the
+            # CPython-specific wording of TypeError messages.
             try:
-                out = func(**params)
+                inspect.signature(func).bind(**params)
             except TypeError as e:
-                # A TypeError raised while *binding* the call (missing required
-                # arg / unexpected keyword) means the caller supplied the wrong
-                # parameters. Any TypeError raised *inside* the tool body is a
-                # tool bug and must be reported as an execution failure, never
-                # disguised as a caller mistake.
-                msg = str(e)
-                qual = getattr(func, "__qualname__", "")
-                if msg.startswith(qual + "(") or msg.startswith(
-                    getattr(func, "__name__", "") + "("
-                ):
-                    out = Observation(name, Status.ERROR, "Invalid parameters", errors=[msg])
-                    self._audit(audit, name, params, spec, out, caller)
-                    return out
-                raise
+                out = Observation(
+                    name, Status.ERROR, "Invalid parameters",
+                    errors=[f"parameter binding failed: {e}"],
+                )
+                self._audit(audit, name, params, spec, out, caller)
+                return out
+            out = func(**params)
             if not isinstance(out, Observation):
                 raise TypeError("tool did not return Observation")
             out.meta.setdefault("tool_contract", {

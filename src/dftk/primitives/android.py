@@ -324,7 +324,7 @@ def _apk_signing_block(data:bytes)->dict:
 def apk_signing_inventory(path:str)->Observation:
     p=Path(path)
     if not p.is_file() or not zipfile.is_zipfile(p): return Observation('android.apk_signing_inventory',Status.UNSUPPORTED,'Input is not an APK/ZIP')
-    data,err=read_file_bounded_observation('android.apk_signing_inventory',p,1024*1024*1024)
+    data,err,src=read_file_bounded_observation('android.apk_signing_inventory',p,1024*1024*1024)
     if err: return err
     block=_apk_signing_block(data)
     with zipfile.ZipFile(p) as z:
@@ -334,7 +334,7 @@ def apk_signing_inventory(path:str)->Observation:
     schemes.extend(s for s in block.get('schemes',[]) if s not in schemes)
     facts={'schemes_detected':schemes,'v1_entries':v1,'signing_block':block}
     ev=[Evidence(str(p),'apk_signing_scheme',s,locator='META-INF' if s=='v1' else f"offset:{block.get('offset','')}") for s in schemes]
-    return Observation('android.apk_signing_inventory',Status.OK,f"Detected APK signing scheme marker(s): {', '.join(schemes) if schemes else 'none'}",facts=facts,evidence=ev,meta={'source_sha256':sha256_file(p)})
+    return Observation('android.apk_signing_inventory',Status.OK,f"Detected APK signing scheme marker(s): {', '.join(schemes) if schemes else 'none'}",facts=facts,evidence=ev,meta={'source_sha256':src})
 
 @registry.tool(name='android.appdata_inventory',description='Inventory an extracted Android app data directory (shared_prefs, databases, files, cache) without modifying it.',
  safety=SafetyLevel.READ_ONLY,tags=('android','appdata','filesystem'),produces=('android_appdata','database_candidates','shared_preferences'),cost_hint='medium',

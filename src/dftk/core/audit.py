@@ -39,6 +39,29 @@ _SECRET_KEY_RE = re.compile(
     re.I,
 )
 
+# Value-level secret patterns that must be masked even when the surrounding
+# parameter key does not match _SECRET_KEY_RE (e.g. a DSN/connection string or
+# URL stored under "url"/"dsn"/"connectionString"/...).
+_SECRET_VALUE_RES = [
+    # user:password@host inside URLs / connection strings
+    re.compile(r"(?i)([a-z][a-z0-9+.\-]*://)([^:/?#\s]+):([^@/?#\s]+)@"),
+    # password=/pwd=/secret=/token=/... assignments embedded in a value.
+    # Capture the key name and separator so the redaction keeps the key but
+    # masks only the credential value (e.g. "Password=<redacted>").
+    re.compile(
+        r"(?i)(?<![a-z0-9])(?P<key>password|passwd|pwd|secret|token|api[_-]?key|"
+        r"apikey|credential|authorization)\s*(?P<sep>[:=])\s*(?P<val>[^\s;\"']+)"
+    ),
+]
+
+
+def _redact_string(value: str) -> str:
+    """Mask embedded credentials inside an arbitrary string value."""
+    value = _SECRET_VALUE_RES[0].sub(r"\1\2:<redacted>@", value)
+    value = _SECRET_VALUE_RES[1].sub(r"\g<key>\g<sep><redacted>", value)
+    return value
+
+
 _MAX_PARAM_STR = 4096
 _MAX_PARAM_DEPTH = 6
 
@@ -71,7 +94,7 @@ class ToolAuditLog:
                 "tool": tool,
                 "caller": caller,
                 "status": observation.status.value,
-                "summary": observation.summary,
+                "summary": _redact_string(observation.summary) if isinstance(observation.summary, str) else observation.summary,
                 "safety": spec.safety.name if spec is not None else None,
                 "network": spec.network if spec is not None else None,
                 "tags": list(spec.tags) if spec is not None else None,
@@ -80,7 +103,7 @@ class ToolAuditLog:
                 "evidence_hashes": [
                     e.source_sha256 for e in observation.evidence if e.source_sha256
                 ],
-                "errors": list(observation.errors),
+                "errors": [_redact_string(e) if isinstance(e, str) else e for e in observation.errors],
             }
             line = json.dumps(rec, ensure_ascii=False, default=str)
         except Exception:
@@ -105,8 +128,11 @@ class ToolAuditLog:
             }
         if isinstance(value, (list, tuple)):
             return [ToolAuditLog._redact(v, depth + 1) for v in value]
-        if isinstance(value, str) and len(value) > _MAX_PARAM_STR:
-            return value[:_MAX_PARAM_STR] + f"<omitted:{len(value) - _MAX_PARAM_STR} chars>"
+        if isinstance(value, str):
+            value = _redact_string(value)
+            if len(value) > _MAX_PARAM_STR:
+                return value[:_MAX_PARAM_STR] + f"<omitted:{len(value) - _MAX_PARAM_STR} chars>"
+            return value
         return value
 
 
