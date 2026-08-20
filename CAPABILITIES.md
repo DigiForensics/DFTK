@@ -1,9 +1,12 @@
-# Capability map — DFTK 3.3.0
+# Capability map — DFTK 3.4.0
 
-The registry contains 72 tools (71 READ_ONLY, 1 STATEFUL). Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
+The registry contains 79 tools: 78 `READ_ONLY` and 1 `STATEFUL`. The registry is
+the source of truth for capability metadata; `scripts/check_docs.py` verifies this
+summary against the loaded runtime.
 
 ## Artifact and filesystem
 
+- `evidence.intake` — Agent-oriented evidence manifest, bounded SHA-256/magic inspection, and source-linked next-step plan for a file or extracted tree.
 - `artifact.inspect` — magic/container-aware type identification + SHA-256.
 - `tree.inventory` — bounded recursive inventory, extension distribution, largest files.
 - `file.hash` — hashlib-backed cryptographic hashing.
@@ -31,6 +34,12 @@ The registry contains 72 tools (71 READ_ONLY, 1 STATEFUL). Most capabilities are
 - PE/COFF architecture, timestamp and section inventory.
 - bounded JNI/crypto/network/command indicator string scan; explicitly heuristic.
 
+## Malware and rule scanning
+
+- YARA rule scanning of one file or a bounded evidence tree, using either a rule
+  file or inline rule source; source hashes, rule metadata, and bounded match
+  offsets are retained without executing the sample.
+
 ## Crypto and encoding
 
 - BIP39 English validation and evidence-tree scanning with checksum verification.
@@ -47,6 +56,9 @@ The registry contains 72 tools (71 READ_ONLY, 1 STATEFUL). Most capabilities are
 - web/application config candidate discovery and explicit config key/value extraction with secret redaction by default.
 - Nginx/Apache access-log summaries.
 - fixed-command read-only SSH inventory behind network policy.
+- remote SSH forensic snapshot profiles for baseline, incident response, container, and web-server evidence: host key fingerprint, identity, sessions, processes, listeners, routes, systemd, timers, cron, persistence paths, auth-log tail, Docker, and web exposure—without an arbitrary command parameter.
+- bounded WebShell hunting for PHP/JSP/ASP/ASPX/Node/Python source trees, with
+  source hashes and byte offsets for suspicious input-to-execution/obfuscation combinations.
 
 ## Databases
 
@@ -70,6 +82,8 @@ Optional `python-registry` / `python-evtx` capabilities:
 - Registry hive inventory.
 - SYSTEM hive CurrentControlSet USBSTOR and MountedDevices recovery.
 - EVTX provider, EventID and timestamp summaries.
+- Deep EVTX hunting: normalized event timeline plus high-value logon, process,
+  PowerShell, service-install, scheduled-task, audit-clear, and Sysmon triage hits.
 
 ## Disk images
 
@@ -93,7 +107,9 @@ Optional forensic-environment capabilities:
 
 ## Timeline correlation and case sessions
 
+- `correlation.entity_graph` — source-linked domains, IPs, email addresses, SHA-256 values, and account identifiers across DFTK Observations; includes deterministic co-observation relationships.
 - `timeline.merge` — pure correlation primitive: normalize ISO/epoch timestamps, sort, and attribute events to their source across multiple inputs.
+- `dftk case graph <case_id>` / MCP `dftk_case(action="graph")` — derive the same entity graph directly from persisted Case Observations.
 - `recipe.timeline.unified` — compose a filesystem metadata timeline (and optional extra sources) into one unified timeline.
 - `dftk case` CLI — accumulate read-only tool runs in an isolated workspace (`.dftk/cases/<id>/`) and correlate them: `case new`, `case list`, `case run`, `case timeline`, `case export` (JSON or Markdown). The session only writes under its explicit workspace and never touches source evidence.
 
@@ -113,3 +129,4 @@ Optional forensic-environment capabilities:
 - `recipe.email.full_offline_triage`
 - `recipe.wallet.mnemonic_scan`
 - `recipe.timeline.unified` — build a unified, source-attributed timeline from a filesystem tree plus optional extra dftk Observation sources.
+- `recipe.agent.guided_intake` — one controlled Agent first-response call: evidence intake plus at most five eligible read-only, evidence-derived routes; it returns executed and deferred actions rather than guessing further commands.

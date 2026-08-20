@@ -16,6 +16,7 @@ from dftk.catalog import load_builtin_tools
 from dftk.core.registry import registry, ToolRegistry
 from dftk.core.safety import SafetyPolicy
 from dftk.core.models import SafetyLevel,Status
+from dftk.manifest import MANIFEST_SCHEMA_VERSION, capability_manifest
 
 
 def test_default_tool_surface_is_read_only_except_explicit_workspace_actions():
@@ -46,6 +47,16 @@ def test_manifest_has_agent_metadata():
     assert 'android' in spec.tags
     assert 'android_manifest' in spec.produces
     assert spec.deterministic is True
+
+
+def test_capability_manifest_is_complete_and_deterministic():
+    manifest = capability_manifest()
+    assert manifest["schema_version"] == MANIFEST_SCHEMA_VERSION
+    assert manifest["tool_count"] == len(manifest["tools"])
+    assert manifest["tool_count"] == len(registry.specs())
+    assert manifest["safety_counts"]["READ_ONLY"] == 78
+    assert manifest["safety_counts"]["STATEFUL"] == 1
+    assert manifest["tools"] == sorted(manifest["tools"], key=lambda tool: tool["name"])
 
 
 def test_run_blames_caller_for_wrong_params():

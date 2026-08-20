@@ -80,7 +80,7 @@ def chromium_downloads(path:str,limit:int=5000)->Observation:
         cols={r[1] for r in con.execute('PRAGMA table_info(downloads)')}
         wanted=['id','current_path','target_path','start_time','end_time','received_bytes','total_bytes','state','danger_type','interrupt_reason','tab_url','referrer','site_url','url']
         selected=[c for c in wanted if c in cols]
-        if not selected: con.close(); return Observation('browser.chromium_downloads',Status.UNSUPPORTED,'No known Chromium download columns found')
+        if not selected: con.close(); return Observation('browser.chromium_downloads',Status.UNSUPPORTED,'No known Chromium download columns found',meta={'source_sha256':sha256_file(p)})
         query='SELECT '+','.join('"'+c+'"' for c in selected)+' FROM downloads ORDER BY '+('start_time' if 'start_time' in selected else selected[0])+' DESC LIMIT ?'
         rows=[]
         chains={}

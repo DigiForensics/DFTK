@@ -32,12 +32,35 @@ def test_mcp_default_policy_and_root_guard(tmp_path: Path):
     _validate_params({"params": ["/api/v1/login"]}, root=tmp_path.resolve())
 
 
+def test_mcp_uses_separate_workspace_and_rejects_evidence_writes(tmp_path: Path):
+    workspace = tmp_path.parent / f"{tmp_path.name}-cases"
+    gateway = DFTKMCPGateway(root=tmp_path, workspace=workspace)
+    report = gateway.preflight()
+    assert gateway.workspace == workspace.resolve()
+    assert report["mcp_policy"]["workspace_inside_root"] is False
+    assert report["mcp_policy"]["source_evidence_modified"] is False
+    assert workspace.is_dir()
+
+    with pytest.raises(ValueError, match="outside --root"):
+        DFTKMCPGateway(root=tmp_path, workspace=tmp_path / ".dftk")
+
+    legacy = DFTKMCPGateway(
+        root=tmp_path,
+        workspace=tmp_path / ".dftk",
+        allow_workspace_in_root=True,
+    )
+    assert legacy.workspace_inside_root is True
+
+
 def test_mcp_validate_keeps_opaque_separator_text(tmp_path: Path):
     # Windows registry keys and other opaque text that merely contain separators
     # must not be misclassified as filesystem paths and rejected.
     _validate_params({"subkey": "HKLM\\Software\\Microsoft\\Windows"}, root=tmp_path.resolve())
     _validate_params({"note": "a/b/c is just text"}, root=tmp_path.resolve())
     _validate_params({"label": "foo/bar"}, root=tmp_path.resolve())
+    # SSH identity files are local client authentication configuration, not
+    # source evidence. The remote collector consumes them directly.
+    _validate_params({"identity_file": "C:/Users/analyst/.ssh/id_ed25519"}, root=tmp_path.resolve())
 
 
 def test_mcp_validate_constrains_real_relative_path_under_unknown_key(tmp_path: Path):

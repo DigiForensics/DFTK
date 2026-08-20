@@ -96,7 +96,7 @@ def windows_offline_triage(system_hive:str|None=None,evtx:str|None=None)->Observ
     p=SafetyPolicy(); children=[]
     if system_hive:
         children.extend([registry.run('windows.registry_inventory',{'path':system_hive,'depth':1},p),registry.run('windows.usb_artifacts',{'system_hive':system_hive},p)])
-    if evtx: children.append(registry.run('windows.evtx_summary',{'path':evtx},p))
+    if evtx: children.extend([registry.run('windows.evtx_summary',{'path':evtx},p),registry.run('windows.evtx_hunt',{'path':evtx},p)])
     return aggregate('recipe.windows.offline_triage',children,'Windows offline triage complete')
 
 @registry.tool(name='recipe.database.triage',description='Identify and inventory SQLite databases or SQL text dumps without writes/imports.',
@@ -168,3 +168,41 @@ def unified_timeline(root:str,extra_sources:list[str]|None=None,limit:int=200000
         sources.append({'file':f})
     merged=registry.run('timeline.merge',{'inline':sources,'limit':limit},p)
     return aggregate('recipe.timeline.unified',[fs,merged],'Unified timeline built')
+
+
+@registry.tool(name='recipe.agent.guided_intake',description='Agent-first bounded first response: create an evidence intake manifest, then execute a small deterministic subset of its read-only evidence-derived routes. Returns executed and deferred actions for review.',
+ safety=SafetyLevel.READ_ONLY,tags=('recipe','agent','intake','triage','forensics'),produces=('guided_triage','evidence_manifest','next_actions'),cost_hint='high',
+ parameters={'type':'object','properties':{'path':{'type':'string'},'objective':{'type':'string','description':'Optional investigation objective used only to prioritize matching route names/reasons.'},'max_steps':{'type':'integer','default':2,'minimum':0,'maximum':5},'max_files':{'type':'integer','default':5000}},'required':['path']})
+def agent_guided_intake(path:str,objective:str|None=None,max_steps:int=2,max_files:int=5000)->Observation:
+    if not 0 <= max_steps <= 5:
+        return Observation('recipe.agent.guided_intake',Status.ERROR,'max_steps must be between 0 and 5')
+    policy=SafetyPolicy()
+    intake=registry.run('evidence.intake',{'path':path,'max_files':max_files},policy)
+    children=[intake]
+    steps=[]
+    for step in intake.facts.get('next_steps',[]) if isinstance(intake.facts,dict) else []:
+        if isinstance(step,dict) and isinstance(step.get('tool'),str) and isinstance(step.get('params'),dict):
+            steps.append(step)
+    objective_words=set((objective or '').lower().replace('_',' ').split())
+    def priority(step):
+        hay=' '.join([step.get('tool',''),step.get('reason','')]).lower()
+        return (-sum(word in hay for word in objective_words),step.get('tool',''),repr(step.get('params',{})))
+    steps.sort(key=priority)
+    executed=[]; deferred=[]
+    for step in steps:
+        if len(executed) >= max_steps:
+            deferred.append(step); continue
+        try:
+            spec=registry.get(step['tool'])
+        except KeyError:
+            deferred.append({**step,'deferred_reason':'capability unavailable'}); continue
+        if spec.safety != SafetyLevel.READ_ONLY or spec.network:
+            deferred.append({**step,'deferred_reason':'not eligible for automatic read-only first response'}); continue
+        child=registry.run(step['tool'],step['params'],policy)
+        children.append(child); executed.append({'tool':step['tool'],'params':step['params'],'reason':step.get('reason','evidence-intake route'),'status':child.status.value})
+    result=aggregate('recipe.agent.guided_intake',children,f'Agent guided intake executed {len(executed)} evidence-derived step(s)')
+    result.facts['executed_actions']=executed
+    result.facts['deferred_actions']=deferred
+    result.facts['objective']=objective
+    result.facts['guidance']='Review each child Observation before executing deferred actions. This recipe never enables network access or stateful/destructive capabilities.'
+    return result

@@ -12,7 +12,7 @@ The registry is the only capability surface intended for an Agent. Each `ToolSpe
 - optional runtime dependencies;
 - deterministic flag and a coarse cost hint.
 
-This allows an upper-layer planner to select tools from evidence requirements instead of guessing from script filenames.
+This lets an upper layer select tools from evidence requirements instead of script filenames.
 
 ```text
 Question / AnswerIntent / EvidenceRequirement
@@ -53,13 +53,13 @@ Question / AnswerIntent / EvidenceRequirement
 - `confidence` in the range 0..1;
 - `method` and an optional note.
 
-The registry propagates a known source SHA-256 from observation metadata into evidence items that do not already carry one. This gives an upper-layer EvidenceStore enough provenance to construct immutable evidence nodes without scraping terminal output.
+The registry propagates a known source SHA-256 from observation metadata into evidence items that do not already carry one. An upper-layer evidence store can therefore construct immutable evidence nodes without scraping terminal output.
 
 ## Audit ledger boundary
 
 `core/audit.ToolAuditLog` is an optional append-only JSONL side record wired into the single `registry.run` funnel, so every execution path — CLI, recipe, `CaseSession`, MCP worker — is covered by one implementation rather than per-caller logging.
 
-The ledger sits strictly outside the evidence contract. It records provenance *about* a run (timestamp, tool, caller, parameters, safety level, status, evidence hashes, errors) and never participates in producing `Evidence`. It is failure-tolerant by design: serialization or I/O errors are swallowed, because an unavailable ledger must not change the outcome of an examination. This asymmetry is intentional — evidence integrity outranks bookkeeping completeness.
+The ledger is outside the evidence contract. It records run provenance (timestamp, tool, caller, parameters, safety level, status, evidence hashes, and errors) and does not produce `Evidence`. Serialization and I/O failures do not change the examination result.
 
 ## Safety model
 
@@ -84,7 +84,7 @@ Examples:
 - `recipe.network.capture_triage` combines artifact identification, format-appropriate flow inventory and protocol extraction;
 - `recipe.server.deep_offline_triage` combines package, authentication, persistence, Docker, web config/log and optional literal-search observations over an offline root filesystem.
 
-`recipe.artifact.auto_triage` is intentionally deterministic and conservative. It is a baseline router, not a replacement for model reasoning; a forensic Agent should still plan deeper actions from the actual question and accumulated observations.
+`recipe.artifact.auto_triage` is deterministic and conservative. It provides a baseline; follow-up actions still depend on the question and accumulated observations.
 
 ## Optional dependency semantics
 

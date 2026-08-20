@@ -1,11 +1,8 @@
 # Deploying DFTK with an external forensic-toolkit bundle
 
-This guide is for the **recipient** of a DFTK deployment: you were given the
-DFTK GitHub link to install, and a separate compressed package of forensic
-tools (IDA/Ghidra/jadx/apktool/tshark/…). It explains how to make those tools
-discoverable to DFTK so they work in subsequent `dftk` calls — without editing
-system PATH, without admin rights, and regardless of which drive you extracted
-the package to.
+Use this guide when DFTK is deployed with a separate archive of forensic tools
+(IDA, Ghidra, jadx, apktool, tshark, …). It explains how to register the extracted
+tools with DFTK without editing the system `PATH` or requiring administrator rights.
 
 The workflow is the `win-tool-launcher` environment-preparation step folded
 directly into DFTK as `dftk prepare`.
@@ -21,7 +18,7 @@ directly into DFTK as `dftk prepare`.
 3. The forensic-toolkit zip, extracted somewhere writable (e.g. `E:\TOOLKIT`).
    Drive letter does **not** matter — `dftk prepare` derives the real location.
 
-## Prepare the toolchain (the important step)
+## Prepare the toolchain
 
 Point DFTK at the extracted directory:
 
@@ -31,9 +28,8 @@ dftk prepare E:\TOOLKIT
 
 This:
 
-- records the toolkit root + a DFTK-managed shim directory in
-  `~/.dftk/toolchain.json` (always under your user home, so the agent can read
-  it even when the toolkit is on an exotic / non-PATH drive);
+- records the toolkit root and a DFTK-managed shim directory in
+  `~/.dftk/toolchain.json`;
 - generates two-layer launchers in `~/.dftk/bin`:
   - `<tool>.bat` for real Windows `cmd` / PowerShell;
   - an extensionless `<tool>` wrapper for the agent Bash;
@@ -63,21 +59,20 @@ Bash:     . "$HOME/.dftk/bin/set_path.sh"
 
 This is per-session only — it never modifies your persistent User PATH.
 
-## Why this avoids the "tools not in a readable directory" problem
+## How discovery works
 
-Previously, external tools had to be on PATH or under a `DFTK_<DOMAIN>_TOOL_DIRS`
-env var that you set by hand. If the toolkit landed somewhere the agent sandbox
-could not read, the tools were silently unusable.
+External tools can be located through `PATH`, `DFTK_<DOMAIN>_TOOL_DIRS`, or the
+configuration produced by `dftk prepare`. A tool outside the configured locations
+is unavailable to the corresponding capability.
 
-`dftk prepare` fixes this by:
+`dftk prepare` adds the extracted location to DFTK discovery by:
 
-- writing its config under `~/.dftk/` (the user home — always readable by the
-  agent);
+- writing its configuration under `~/.dftk/`;
 - making DFTK's binary resolver search that config automatically on every call,
   in addition to PATH and the per-domain env vars.
 
-So after one `dftk prepare`, the tools are found on all subsequent `dftk` calls
-with no further configuration.
+After preparation, later `dftk` calls can resolve the tools without further
+configuration.
 
 ## Options
 

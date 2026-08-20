@@ -29,6 +29,7 @@ def _mcp_version_supported(installed: str | None) -> bool:
 
 _OPTIONAL_IMPORTS = {
     "ssh:paramiko": "paramiko",
+    "malware:yara": "yara",
     "windows:registry": "Registry",
     "windows:evtx": "Evtx",
     "email:dkim": "dkim",

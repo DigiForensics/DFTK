@@ -30,6 +30,15 @@ def test_sql_dump_inventory(tmp_path):
     obs=sql_dump_inventory(str(p)); tables={x['table']:x for x in obs.facts['tables']}
     assert obs.facts['databases']==['app']; assert tables['users']['insert_statements']==2; assert 'posts' in tables
 
+
+def test_sql_dump_inventory_bounds_an_overlong_line(tmp_path):
+    p=tmp_path/'long.sql'
+    p.write_bytes(b'A' * 64 + b';\nCREATE TABLE later(id INT);\n')
+    obs=sql_dump_inventory(str(p),max_line_bytes=32)
+    assert obs.status==Status.PARTIAL
+    assert obs.facts['tables']==[]
+    assert 'line exceeded 32 bytes' in obs.warnings[0]
+
 from dftk.primitives.database import sqlite_search
 
 def test_sqlite_search_across_tables(tmp_path):

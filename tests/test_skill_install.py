@@ -1,8 +1,12 @@
 # Copyright 2026 DyNooob @ DigiForensics
 # Licensed under the Apache License, Version 2.0.
 from pathlib import Path
+import io
+import tarfile
 
-from dftk.skill_bundle import install_from_repo_root
+import pytest
+
+from dftk.skill_bundle import _safe_extract_tar, install_from_repo_root
 
 
 def _make_fake_repo(root: Path) -> None:
@@ -69,3 +73,15 @@ def test_install_excludes_vcs_metadata(tmp_path: Path):
     assert not (base / "dftk" / ".github").exists()
     # Real content is still present.
     assert (base / "dftk" / "SKILL.md").is_file()
+
+
+def test_safe_tar_extraction_rejects_path_escape(tmp_path: Path):
+    data = io.BytesIO()
+    with tarfile.open(fileobj=data, mode="w") as tf:
+        member = tarfile.TarInfo("../outside.txt")
+        member.size = 1
+        tf.addfile(member, io.BytesIO(b"x"))
+    data.seek(0)
+    with tarfile.open(fileobj=data, mode="r") as tf:
+        with pytest.raises(ValueError, match="escapes destination"):
+            _safe_extract_tar(tf, tmp_path / "destination")

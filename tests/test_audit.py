@@ -133,13 +133,14 @@ def test_registry_run_auto_logs_via_env(monkeypatch, tmp_path: Path):
 def test_mcp_gateway_audit_path_resolution(tmp_path: Path):
     from dftk.mcp_server import DFTKMCPGateway
 
-    g_default = DFTKMCPGateway(root=tmp_path, audit=True)
-    assert g_default.audit_path == (tmp_path / ".dftk" / "audit.jsonl")
+    workspace = tmp_path.parent / f"{tmp_path.name}-cases"
+    g_default = DFTKMCPGateway(root=tmp_path, workspace=workspace, audit=True)
+    assert g_default.audit_path == (workspace / "audit.jsonl")
 
-    g_custom = DFTKMCPGateway(root=tmp_path, audit="chain.jsonl")
-    assert g_custom.audit_path == (tmp_path / ".dftk" / "chain.jsonl")
+    g_custom = DFTKMCPGateway(root=tmp_path, workspace=workspace, audit="chain.jsonl")
+    assert g_custom.audit_path == (workspace / "chain.jsonl")
 
-    g_off = DFTKMCPGateway(root=tmp_path, audit=False)
+    g_off = DFTKMCPGateway(root=tmp_path, workspace=workspace, audit=False)
     assert g_off.audit_path is None
 
 

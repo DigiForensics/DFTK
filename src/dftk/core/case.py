@@ -35,7 +35,19 @@ from .registry import registry
 from .safety import SafetyPolicy
 from .timeline_core import merge_events
 
-DEFAULT_WORKSPACE = ".dftk"
+def default_workspace() -> Path:
+    """Return the user-owned default location for persisted case material.
+
+    Case files, locks, and audit records are derived evidence. Keeping them out
+    of the current directory makes the safe path the default when a user starts
+    DFTK from an acquired or read-only evidence volume. Set ``DFTK_WORKSPACE``
+    to use an organisation-managed case root instead.
+    """
+    configured = os.environ.get("DFTK_WORKSPACE")
+    return Path(configured).expanduser() if configured else Path.home() / ".dftk"
+
+
+DEFAULT_WORKSPACE = default_workspace()
 
 
 def _now() -> str:
@@ -101,8 +113,8 @@ def _exclusive_file_lock(path: Path) -> Iterator[None]:
 
 
 class CaseSession:
-    def __init__(self, workspace: str | Path = DEFAULT_WORKSPACE):
-        self.workspace = Path(workspace)
+    def __init__(self, workspace: str | Path | None = None):
+        self.workspace = Path(workspace).expanduser() if workspace is not None else default_workspace()
         self.cases_dir = self.workspace / "cases"
         # Intra-process guard: serializes runs issued from multiple threads of
         # the *same* CaseSession (e.g. an Agent runtime fanning out tool calls).
@@ -329,6 +341,137 @@ class CaseSession:
             warnings=warnings,
         )
 
+    def entity_graph(self, case_id: str, *, limit: int = 5000) -> Observation:
+        """Correlate source-linked entities across all persisted case Observations."""
+        from .entity_graph import correlate_files
+
+        manifest = self._manifest(case_id)
+        files: list[str] = []
+        for run in manifest.get("runs", []):
+            artifact = self._run_artifact_path(case_id, run)
+            if artifact.is_file():
+                files.append(str(artifact))
+        result = correlate_files(files, limit=limit, tool="case.entity_graph")
+        result.facts["case_id"] = case_id
+        return result
+
+    def next_actions(self, case_id: str, *, limit: int = 12) -> dict[str, Any]:
+        """Return a compact, deterministic next-action queue for an Agent.
+
+        This deliberately recommends only known DFTK calls derived from persisted
+        evidence intake and Case state. It does not infer findings or invent shell
+        commands from artifact content.
+        """
+        manifest = self._manifest(case_id)
+        runs = list(manifest.get("runs", []))
+        executed = {(str(run.get("tool")), json.dumps(run.get("params", {}), sort_keys=True, ensure_ascii=False)) for run in runs}
+        actions: list[dict[str, Any]] = []
+        intake: dict[str, Any] | None = None
+        for run in reversed(runs):
+            if run.get("tool") != "evidence.intake":
+                continue
+            artifact = self._run_artifact_path(case_id, run)
+            try:
+                intake = json.loads(artifact.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                pass
+            break
+        if intake is None:
+            actions.append({
+                "action": "run", "tool": "evidence.intake", "params": {"path": "<evidence path>"},
+                "reason": "No persisted evidence intake exists. Start with a bounded manifest before selecting specialist tools.",
+                "requires_user_value": ["path"],
+            })
+        else:
+            for step in (intake.get("facts", {}) or {}).get("next_steps", []):
+                tool = step.get("tool")
+                params = step.get("params")
+                if not isinstance(tool, str) or not isinstance(params, dict):
+                    continue
+                key = (tool, json.dumps(params, sort_keys=True, ensure_ascii=False))
+                if key in executed:
+                    continue
+                actions.append({"action": "run", "tool": tool, "params": params, "reason": step.get("reason", "evidence-intake route")})
+                if len(actions) >= limit:
+                    break
+        executed_tools = {str(run.get("tool")) for run in runs}
+        if len(runs) >= 2 and "case.entity_graph" not in executed_tools:
+            actions.append({"action": "case", "operation": "graph", "reason": "Multiple persisted Observations can now be correlated into source-linked entities."})
+        if len(runs) >= 2 and "case.timeline" not in executed_tools:
+            actions.append({"action": "case", "operation": "timeline", "reason": "Multiple persisted Observations may contain time-bearing events."})
+        return {"case_id": case_id, "run_count": len(runs), "actions": actions[:limit], "guidance": "Run only actions that answer the authorized investigation question; recommendations are triage steps, not findings."}
+
+    def guided_intake(self, case_id: str, path: str, *, objective: str | None = None, max_steps: int = 2) -> dict[str, Any]:
+        """Persist an Agent first response as individual, recoverable Case runs.
+
+        Unlike the convenience recipe, this Case-native form persists the intake
+        and each selected child separately. Agents can therefore page, correlate,
+        audit, and resume every action after a context reset.
+        """
+        if not 0 <= int(max_steps) <= 5:
+            raise CaseError("max_steps must be between 0 and 5")
+        self._manifest(case_id)
+        intake = self.run(case_id, "evidence.intake", {"path": path})
+        raw_steps = intake.facts.get("next_steps", []) if isinstance(intake.facts, dict) else []
+        steps = [step for step in raw_steps if isinstance(step, dict) and isinstance(step.get("tool"), str) and isinstance(step.get("params"), dict)]
+        words = set((objective or "").lower().replace("_", " ").split())
+        steps.sort(key=lambda step: (-sum(word in (step["tool"] + " " + str(step.get("reason", ""))).lower() for word in words), step["tool"], json.dumps(step["params"], sort_keys=True)))
+        executed: list[dict[str, Any]] = []
+        deferred: list[dict[str, Any]] = []
+        for step in steps:
+            if len(executed) >= int(max_steps):
+                deferred.append(step); continue
+            try:
+                spec = registry.get(step["tool"])
+            except KeyError:
+                deferred.append({**step, "deferred_reason": "capability unavailable"}); continue
+            if spec.safety != SafetyLevel.READ_ONLY or spec.network:
+                deferred.append({**step, "deferred_reason": "not eligible for automatic read-only first response"}); continue
+            observation = self.run(case_id, step["tool"], step["params"])
+            executed.append({"tool": step["tool"], "params": step["params"], "reason": step.get("reason", "evidence-intake route"), "status": observation.status.value})
+        return {"case_id": case_id, "intake_status": intake.status.value, "executed_actions": executed, "deferred_actions": deferred, "next_actions": self.next_actions(case_id), "guidance": "Each executed action is persisted as its own Case run. Review results before running deferred actions."}
+
+    def brief(self, case_id: str, *, highlight_limit: int = 20) -> dict[str, Any]:
+        """Return a bounded, Agent-context-friendly Case checkpoint."""
+        manifest = self._manifest(case_id)
+        runs: list[dict[str, Any]] = []
+        highlights: list[dict[str, Any]] = []
+        for run in manifest.get("runs", []):
+            artifact = self._run_artifact_path(case_id, run)
+            try:
+                observation = json.loads(artifact.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                runs.append({"seq": run.get("seq"), "tool": run.get("tool"), "status": "missing_artifact"})
+                continue
+            facts = observation.get("facts") if isinstance(observation.get("facts"), dict) else {}
+            runs.append({
+                "seq": run.get("seq"), "tool": observation.get("tool", run.get("tool")),
+                "status": observation.get("status", run.get("status")), "summary": observation.get("summary", ""),
+                "warnings": (observation.get("warnings") or [])[:3], "errors": (observation.get("errors") or [])[:3],
+            })
+            for key, label in (("hunt_hits", "hunt_hit"), ("leads", "web_code_lead"), ("matches", "yara_match")):
+                value = facts.get(key)
+                if not isinstance(value, list):
+                    continue
+                for item in value[:5]:
+                    highlights.append({"run_seq": run.get("seq"), "tool": observation.get("tool"), "kind": label, "value": item})
+                    if len(highlights) >= highlight_limit:
+                        break
+                if len(highlights) >= highlight_limit:
+                    break
+            if len(highlights) >= highlight_limit:
+                break
+        graph = self.entity_graph(case_id, limit=500)
+        shared_entities = [node for node in graph.facts.get("nodes", []) if len(node.get("occurrences", [])) >= 2][:highlight_limit]
+        timeline = self.timeline(case_id, limit=10_000)
+        return {
+            "schema": "dftk.case.brief/1", "case_id": case_id, "name": manifest.get("name"),
+            "run_count": len(runs), "runs": runs, "highlights": highlights,
+            "shared_entities": shared_entities, "timeline_span": timeline.facts.get("span"),
+            "next_actions": self.next_actions(case_id),
+            "guidance": "This is a bounded checkpoint, not a final finding. Read the referenced Case run before relying on any highlight.",
+        }
+
     def export(self, case_id: str, fmt: str = "json", *, limit: int = 200_000) -> str:
         manifest = self._manifest(case_id)
         timeline = self.timeline(case_id, limit=limit)
@@ -339,6 +482,7 @@ class CaseSession:
                 for key in ("case_id", "name", "created_at", "runs")
             },
             "timeline": timeline.to_dict(),
+            "entity_graph": self.entity_graph(case_id).to_dict(),
         }
         if fmt == "md":
             return _render_markdown(report)

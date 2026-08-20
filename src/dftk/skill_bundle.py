@@ -28,6 +28,22 @@ def default_ref() -> str:
     return f"v{TOOLKIT_VERSION}"
 
 
+def _safe_extract_tar(tf: tarfile.TarFile, destination: Path) -> None:
+    """Extract a repository archive without accepting escaping paths or links."""
+    root = destination.resolve()
+    members: list[tarfile.TarInfo] = []
+    for member in tf.getmembers():
+        target = (root / member.name).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(f"skill archive member escapes destination: {member.name!r}") from exc
+        if member.issym() or member.islnk() or member.isdev():
+            raise ValueError(f"skill archive contains unsupported special member: {member.name!r}")
+        members.append(member)
+    tf.extractall(root, members=members)
+
+
 def fetch_skill_repo(ref: str | None = None, dest: Path | None = None) -> Path:
     """Fetch the DFTK-skill repository at ``ref`` into a local directory.
 
@@ -57,7 +73,7 @@ def fetch_skill_repo(ref: str | None = None, dest: Path | None = None) -> Path:
     with urlopen(url) as resp:
         data = resp.read()
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
-        tf.extractall(dest)
+        _safe_extract_tar(tf, dest)
     nested = next((p for p in dest.iterdir() if p.is_dir()), None)
     return nested if nested is not None else dest
 

@@ -1,0 +1,2896 @@
+{
+  "schema_version": "3",
+  "toolkit_version": "3.4.0",
+  "tool_count": 79,
+  "safety_counts": {
+    "READ_ONLY": 78,
+    "STATEFUL": 1
+  },
+  "domain_counts": {
+    "android": 7,
+    "archive": 2,
+    "artifact": 1,
+    "binary": 3,
+    "browser": 4,
+    "correlation": 1,
+    "crypto": 3,
+    "database": 4,
+    "docker": 2,
+    "email": 4,
+    "encoding": 1,
+    "evidence": 1,
+    "file": 4,
+    "image": 2,
+    "linux": 4,
+    "malware": 1,
+    "network": 3,
+    "recipe": 15,
+    "server": 2,
+    "timeline": 2,
+    "tree": 1,
+    "web": 4,
+    "windows": 8
+  },
+  "tools": [
+    {
+      "name": "android.apk_endpoints",
+      "description": "Extract URL/domain/IP/content-URI endpoint candidates from parsed DEX strings across an APK with source DEX/string locators.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 2000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "android",
+        "apk",
+        "network"
+      ],
+      "produces": [
+        "endpoints",
+        "domains",
+        "urls"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "android.apk_inventory",
+      "description": "Inventory APK ZIP members, DEX files, native libraries, certificates and manifest presence.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "android",
+        "apk_inventory"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "android.apk_manifest",
+      "description": "Parse AndroidManifest.xml from an APK, including binary AXML, and summarize package, permissions, SDK and components.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "include_elements": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "android",
+        "apk",
+        "manifest"
+      ],
+      "produces": [
+        "android_manifest",
+        "permissions",
+        "components"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "android.apk_search",
+      "description": "Search parsed DEX string tables inside an APK for a literal or regular expression.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "regex": {
+            "type": "boolean",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "default": 500
+          }
+        },
+        "required": [
+          "path",
+          "query"
+        ]
+      },
+      "tags": [
+        "android",
+        "apk_search"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "android.apk_signing_inventory",
+      "description": "Detect APK v1 signing entries and APK Signing Block scheme IDs (v2/v3/v3.1/source stamp) without modifying the APK.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "android",
+        "apk",
+        "signing"
+      ],
+      "produces": [
+        "apk_signing"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "android.appdata_inventory",
+      "description": "Inventory an extracted Android app data directory (shared_prefs, databases, files, cache) without modifying it.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 20000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "android",
+        "appdata",
+        "filesystem"
+      ],
+      "produces": [
+        "android_appdata",
+        "database_candidates",
+        "shared_preferences"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "android.dex_strings",
+      "description": "Parse the DEX string table using ULEB128 string_data_item and modified UTF-8.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "contains": {
+            "type": "string"
+          },
+          "regex": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "android",
+        "dex_strings"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "archive.extract_safe",
+      "description": "Extract ZIP/TAR members into a separate workspace with path-traversal, member-count and total-size limits. Source archive is never modified.",
+      "safety": "STATEFUL",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "output_dir": {
+            "type": "string"
+          },
+          "member_limit": {
+            "type": "integer",
+            "default": 20000
+          },
+          "total_size_limit": {
+            "type": "integer",
+            "default": 2147483648
+          },
+          "overwrite": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "path",
+          "output_dir"
+        ]
+      },
+      "tags": [
+        "archive",
+        "workspace",
+        "extract"
+      ],
+      "produces": [
+        "extracted_files"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "archive.inventory",
+      "description": "Inventory ZIP/TAR archive members and metadata without extraction. The member list is bounded by `limit` (peak memory stays proportional to `limit` even for very large archives).",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "archive",
+        "inventory"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "artifact.inspect",
+      "description": "Identify an artifact from magic bytes and container structure, with size and SHA-256.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "artifact",
+        "triage"
+      ],
+      "produces": [
+        "artifact_type",
+        "hash"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "binary.elf_inventory",
+      "description": "Parse ELF architecture and section metadata; optionally extract bounded printable strings.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "strings": {
+            "type": "boolean",
+            "default": true
+          },
+          "string_limit": {
+            "type": "integer",
+            "default": 2000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "binary",
+        "elf_inventory"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "binary.native_indicator_scan",
+      "description": "Heuristically scan a native binary for JNI names, crypto APIs, URLs and suspicious command/network indicators. Findings are indicators, not conclusions.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "binary",
+        "triage",
+        "native"
+      ],
+      "produces": [
+        "native_indicators"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "binary.pe_inventory",
+      "description": "Parse PE/COFF architecture, timestamp, characteristics and section table without executing the binary.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "strings": {
+            "type": "boolean",
+            "default": false
+          },
+          "string_limit": {
+            "type": "integer",
+            "default": 2000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "binary",
+        "windows",
+        "pe"
+      ],
+      "produces": [
+        "pe_metadata"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "browser.chromium_cookies",
+      "description": "Inventory Chromium/Chrome/Edge Cookies SQLite metadata in immutable read-only mode. Plaintext values are omitted unless include_values=true; encrypted blobs are never decrypted.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "include_values": {
+            "type": "boolean",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "browser",
+        "chromium",
+        "cookies"
+      ],
+      "produces": [
+        "browser_cookies"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "browser.chromium_downloads",
+      "description": "Read Chromium/Chrome/Edge download records and URL chains from History SQLite in immutable read-only mode.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "browser",
+        "chromium",
+        "downloads",
+        "timeline"
+      ],
+      "produces": [
+        "browser_downloads",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "browser.chromium_history",
+      "description": "Read Chromium/Chrome/Edge History SQLite visits and URLs in immutable read-only mode.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "browser",
+        "chromium",
+        "history",
+        "timeline"
+      ],
+      "produces": [
+        "browser_history",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "browser.firefox_history",
+      "description": "Read Firefox places.sqlite history visits in immutable read-only mode.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "browser",
+        "firefox",
+        "history",
+        "timeline"
+      ],
+      "produces": [
+        "browser_history",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "correlation.entity_graph",
+      "description": "Correlate domains, IPs, emails, SHA-256 values, and account identifiers across DFTK Observation JSON files or inline Observations, preserving source locators.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Persisted DFTK Observation JSON files."
+          },
+          "inline": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Inline DFTK Observation objects."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000,
+            "minimum": 1,
+            "maximum": 20000
+          }
+        }
+      },
+      "tags": [
+        "correlation",
+        "entity",
+        "graph",
+        "timeline",
+        "agent"
+      ],
+      "produces": [
+        "entity_graph",
+        "entities",
+        "relationships"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "crypto.bip39_scan",
+      "description": "Scan one file or directory for BIP39 English word sequences and distinguish checksum-valid mnemonics.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 5000
+          },
+          "max_bytes_per_file": {
+            "type": "integer",
+            "default": 8388608
+          },
+          "max_candidates": {
+            "type": "integer",
+            "default": 200
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "crypto",
+        "bip39_scan"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "crypto.bip39_validate",
+      "description": "Validate a BIP39 English mnemonic including its checksum.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mnemonic": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mnemonic"
+        ]
+      },
+      "tags": [
+        "crypto",
+        "bip39_validate"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "crypto.entropy_profile",
+      "description": "Compute bounded Shannon entropy per file block to highlight compressed/encrypted/high-entropy regions; does not classify encryption by itself.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "block_size": {
+            "type": "integer",
+            "default": 4096
+          },
+          "block_limit": {
+            "type": "integer",
+            "default": 100000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "crypto",
+        "entropy",
+        "binary"
+      ],
+      "produces": [
+        "entropy_profile"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "database.sql_dump_inventory",
+      "description": "Inventory generic SQL text dumps (MySQL/PostgreSQL/SQLite-style) for databases, CREATE TABLE statements and INSERT counts without importing the dump.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "default": 268435456
+          },
+          "statement_limit": {
+            "type": "integer",
+            "default": 200000
+          },
+          "max_line_bytes": {
+            "type": "integer",
+            "default": 1048576
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "database",
+        "sql_dump",
+        "triage"
+      ],
+      "produces": [
+        "sql_schema",
+        "table_activity"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "database.sqlite_inventory",
+      "description": "Open SQLite in read-only URI mode and report objects, schemas and optional row counts.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "count_rows": {
+            "type": "boolean",
+            "default": true
+          },
+          "table_limit": {
+            "type": "integer",
+            "default": 500
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "database",
+        "sqlite_inventory"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "database.sqlite_query",
+      "description": "Execute one bounded read-only SELECT/WITH query against SQLite with SQLite authorizer write operations denied.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sql": {
+            "type": "string"
+          },
+          "params": {
+            "type": "array",
+            "default": []
+          },
+          "limit": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": [
+          "path",
+          "sql"
+        ]
+      },
+      "tags": [
+        "database",
+        "sqlite",
+        "query"
+      ],
+      "produces": [
+        "query_rows"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "database.sqlite_search",
+      "description": "Search bounded SQLite tables/columns for a literal value using immutable read-only access; avoids requiring the Agent to construct schema-specific SQL first.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "case_sensitive": {
+            "type": "boolean",
+            "default": false
+          },
+          "table_limit": {
+            "type": "integer",
+            "default": 200
+          },
+          "column_limit": {
+            "type": "integer",
+            "default": 2000
+          },
+          "result_limit": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": [
+          "path",
+          "query"
+        ]
+      },
+      "tags": [
+        "database",
+        "sqlite",
+        "search"
+      ],
+      "produces": [
+        "database_matches"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "docker.offline_inventory",
+      "description": "Recover Docker container configuration from an offline /var/lib/docker tree without starting Docker.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "docker",
+        "offline_inventory"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "docker.offline_logs",
+      "description": "Read bounded Docker json-file container logs from an offline Docker data root, optionally filtering for a literal query.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "docker",
+        "logs",
+        "timeline"
+      ],
+      "produces": [
+        "container_logs",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "email.auth_analyze",
+      "description": "Offline EML analysis of sender headers, DKIM identifiers and Authentication-Results. Header mismatches are context, not automatic spoofing verdicts.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "email",
+        "auth_analyze"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "email.dkim_verify",
+      "description": "Verify DKIM signatures using dkimpy and DNS. This is signature verification, not DKIM-Signature repair.",
+      "safety": "READ_ONLY",
+      "network": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "email",
+        "dkim"
+      ],
+      "produces": [
+        "dkim_verification"
+      ],
+      "requires": [
+        "dkimpy",
+        "dnspython"
+      ],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "email.mime_inventory",
+      "description": "Parse an RFC-style email file and inventory headers, MIME parts and attachment hashes without extracting or executing content.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "include_body_preview": {
+            "type": "boolean",
+            "default": false
+          },
+          "preview_chars": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "email",
+        "mime",
+        "attachments"
+      ],
+      "produces": [
+        "email_headers",
+        "mime_parts",
+        "attachments"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "email.spf_verify",
+      "description": "Evaluate SPF for a supplied sending IP and SMTP envelope identity using pyspf and DNS; it does not infer IP from From headers.",
+      "safety": "READ_ONLY",
+      "network": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "mail_from": {
+            "type": "string"
+          },
+          "helo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ip",
+          "mail_from",
+          "helo"
+        ]
+      },
+      "tags": [
+        "email",
+        "spf"
+      ],
+      "produces": [
+        "spf_result"
+      ],
+      "requires": [
+        "pyspf",
+        "dnspython"
+      ],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "encoding.decode_candidates",
+      "description": "Try common reversible text encodings (hex, Base64/Base64URL, percent-encoding) and return bounded decoded candidates with printable ratios.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "max_output_bytes": {
+            "type": "integer",
+            "default": 1048576
+          }
+        },
+        "required": [
+          "value"
+        ]
+      },
+      "tags": [
+        "encoding",
+        "triage"
+      ],
+      "produces": [
+        "decoded_candidates"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "evidence.intake",
+      "description": "Create a bounded, read-only evidence intake manifest for a file or directory and return source-linked next DFTK calls for an Agent.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Evidence file or extracted evidence directory."
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 5000,
+            "minimum": 1,
+            "maximum": 50000
+          },
+          "inspect_limit": {
+            "type": "integer",
+            "default": 200,
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "evidence",
+        "intake",
+        "triage",
+        "agent",
+        "forensics"
+      ],
+      "produces": [
+        "evidence_manifest",
+        "triage_plan",
+        "hash"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "file.hash",
+      "description": "Compute cryptographic hashes of one file without modifying it.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "algorithms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "sha256"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "file",
+        "hash"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "file.search_tree",
+      "description": "Search a file or directory tree for text/byte patterns with bounded results and source locators.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "regex": {
+            "type": "boolean",
+            "default": false
+          },
+          "case_sensitive": {
+            "type": "boolean",
+            "default": false
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 20000
+          },
+          "max_file_size": {
+            "type": "integer",
+            "default": 16777216
+          },
+          "limit": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": [
+          "path",
+          "query"
+        ]
+      },
+      "tags": [
+        "filesystem",
+        "search"
+      ],
+      "produces": [
+        "search_matches"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "file.strings",
+      "description": "Extract bounded printable ASCII strings with byte offsets.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "min_length": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 4
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "file",
+        "strings"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "file.strings_unicode",
+      "description": "Extract bounded UTF-16LE/UTF-16BE printable strings with byte offsets; useful for Windows/native artifacts that ASCII strings miss.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "min_length": {
+            "type": "integer",
+            "default": 4
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "file",
+        "strings",
+        "unicode"
+      ],
+      "produces": [
+        "strings"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "image.e01_filesystem_inventory",
+      "description": "Read E01/EWF through pyewf + pytsk3 and inventory volume partitions and bounded filesystem root entries without mounting or modifying evidence.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "entry_limit": {
+            "type": "integer",
+            "default": 2000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "image",
+        "e01",
+        "filesystem"
+      ],
+      "produces": [
+        "partition_table",
+        "filesystem_inventory"
+      ],
+      "requires": [
+        "pyewf",
+        "pytsk3"
+      ],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "image.e01_inventory",
+      "description": "Open an E01/EWF image read-only with pyewf and report segment/media metadata. Filesystem traversal is intentionally a separate future primitive.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "image",
+        "e01"
+      ],
+      "produces": [
+        "ewf_metadata"
+      ],
+      "requires": [
+        "pyewf"
+      ],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "linux.auth_events",
+      "description": "Extract SSH authentication and sudo events from common offline Linux auth logs (including rotated gzip files).",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "linux",
+        "auth",
+        "timeline"
+      ],
+      "produces": [
+        "auth_events",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "linux.offline_inventory",
+      "description": "Inventory a mounted/offline Linux root filesystem: OS release, accounts, package logs, web roots and Docker metadata presence.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "account_limit": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "linux",
+        "offline_inventory"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "linux.package_events",
+      "description": "Extract package install/upgrade/remove events from common Debian/RPM/Pacman logs in an offline Linux root.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "package": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "linux",
+        "package_events"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "linux.persistence_inventory",
+      "description": "Inventory common offline Linux persistence and operator-history locations: cron, systemd overrides, rc.local, SSH authorized_keys and shell histories.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "linux",
+        "persistence",
+        "triage"
+      ],
+      "produces": [
+        "persistence_candidates"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "malware.yara_scan",
+      "description": "Scan one file or a bounded evidence tree with YARA rules using yara-python. Returns source hashes, rule metadata, and bounded match offsets; never executes or modifies scanned content.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File or extracted evidence tree to scan."
+          },
+          "rule_file": {
+            "type": "string",
+            "description": "YARA rule file under the authorized evidence root."
+          },
+          "rule_text": {
+            "type": "string",
+            "description": "Inline YARA rule source; do not combine with rule_file."
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 5000,
+            "minimum": 1,
+            "maximum": 50000
+          },
+          "max_file_size": {
+            "type": "integer",
+            "default": 268435456,
+            "minimum": 1
+          },
+          "match_limit": {
+            "type": "integer",
+            "default": 1000,
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "timeout": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 1,
+            "maximum": 300
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "malware",
+        "yara",
+        "ioc",
+        "webshell",
+        "scan",
+        "forensics"
+      ],
+      "produces": [
+        "yara_matches",
+        "ioc_hits",
+        "hash"
+      ],
+      "requires": [
+        "yara-python"
+      ],
+      "deterministic": true,
+      "cost_hint": "high"
+    },
+    {
+      "name": "network.capture_protocols",
+      "description": "Extract bounded DNS questions, plaintext HTTP requests and TLS ClientHello SNI from classic PCAP or PCAPNG.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "packet_limit": {
+            "type": "integer",
+            "default": 200000
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "network",
+        "protocols",
+        "pcap"
+      ],
+      "produces": [
+        "dns_queries",
+        "http_requests",
+        "tls_sni"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "network.pcap_inventory",
+      "description": "Parse classic PCAP packet headers and summarize IPv4 TCP/UDP endpoint tuples without external libraries.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "packet_limit": {
+            "type": "integer",
+            "default": 200000
+          },
+          "sample_limit": {
+            "type": "integer",
+            "default": 200
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "network",
+        "pcap_inventory"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "network.pcapng_inventory",
+      "description": "Parse PCAPNG interface and enhanced/simple packet blocks and summarize Ethernet IPv4 TCP/UDP flows.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "packet_limit": {
+            "type": "integer",
+            "default": 200000
+          },
+          "sample_limit": {
+            "type": "integer",
+            "default": 200
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "network",
+        "pcapng"
+      ],
+      "produces": [
+        "network_flows"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "recipe.agent.guided_intake",
+      "description": "Agent-first bounded first response: create an evidence intake manifest, then execute a small deterministic subset of its read-only evidence-derived routes. Returns executed and deferred actions for review.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string",
+            "description": "Optional investigation objective used only to prioritize matching route names/reasons."
+          },
+          "max_steps": {
+            "type": "integer",
+            "default": 2,
+            "minimum": 0,
+            "maximum": 5
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "agent",
+        "intake",
+        "triage",
+        "forensics"
+      ],
+      "produces": [
+        "guided_triage",
+        "evidence_manifest",
+        "next_actions"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "high"
+    },
+    {
+      "name": "recipe.android.appdata_triage",
+      "description": "Inventory extracted Android app data and inspect discovered SQLite databases read-only.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "database_limit": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "android",
+        "appdata",
+        "triage"
+      ],
+      "produces": [
+        "android_appdata_triage"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "recipe.android.deep_static_triage",
+      "description": "Compose APK inventory, binary manifest parsing, signing scheme inventory and targeted DEX searches.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "extra_query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "android",
+        "apk",
+        "triage"
+      ],
+      "produces": [
+        "android_triage"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "recipe.android.static_triage",
+      "description": "Compose APK inventory with targeted DEX searches for URLs, crypto API names and storage/network indicators.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "extra_query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "android",
+        "static_triage"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "recipe.artifact.auto_triage",
+      "description": "Deterministic first-pass routing by artifact magic. This is a convenience baseline; an Agent may choose deeper primitives based on the question.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "artifact",
+        "triage"
+      ],
+      "produces": [
+        "triage"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "recipe.browser.history_triage",
+      "description": "Identify a browser history database and try Chromium and Firefox history parsers read-only.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "browser",
+        "history",
+        "triage"
+      ],
+      "produces": [
+        "browser_triage"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "recipe.database.triage",
+      "description": "Identify and inventory SQLite databases or SQL text dumps without writes/imports.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "database",
+        "triage"
+      ],
+      "produces": [
+        "database_triage"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "recipe.email.full_offline_triage",
+      "description": "Compose MIME/attachment inventory with offline authentication-context analysis; no DNS/network lookup.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "email",
+        "triage"
+      ],
+      "produces": [
+        "email_triage"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "recipe.email.offline_triage",
+      "description": "Run offline email authentication-context extraction without DNS or remote lookups.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "email",
+        "offline_triage"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "recipe.network.capture_triage",
+      "description": "Auto-triage classic PCAP or PCAPNG and extract DNS, HTTP and TLS SNI observations.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "packet_limit": {
+            "type": "integer",
+            "default": 200000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "network",
+        "pcap",
+        "triage"
+      ],
+      "produces": [
+        "network_triage"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "recipe.server.deep_offline_triage",
+      "description": "Compose offline Linux inventory, package/auth/persistence, Docker metadata/logs and web configuration/access-log discovery.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "linux",
+        "server",
+        "triage"
+      ],
+      "produces": [
+        "server_triage"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "high"
+    },
+    {
+      "name": "recipe.server.offline_triage",
+      "description": "Compose offline Linux, package-history, Docker and web-config discovery for a mounted server root.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "server",
+        "offline_triage"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "recipe.timeline.unified",
+      "description": "Build a unified, source-attributed timeline from a filesystem evidence tree and optional extra dftk Observation sources.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "extra_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional paths to dftk Observation JSON files to merge in"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 200000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "recipe",
+        "timeline",
+        "correlation"
+      ],
+      "produces": [
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "recipe.wallet.mnemonic_scan",
+      "description": "Scan an extracted evidence tree for checksum-valid BIP39 English mnemonics.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 5000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "wallet",
+        "mnemonic_scan"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "recipe.windows.offline_triage",
+      "description": "Compose offline Windows artifact triage from a SYSTEM Registry hive and/or EVTX file.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "system_hive": {
+            "type": "string"
+          },
+          "evtx": {
+            "type": "string"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "system_hive"
+            ]
+          },
+          {
+            "required": [
+              "evtx"
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "recipe",
+        "windows",
+        "triage"
+      ],
+      "produces": [
+        "windows_triage"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "server.readonly_inventory",
+      "description": "Run a fixed read-only inventory set over SSH. No arbitrary command parameter is exposed.",
+      "safety": "READ_ONLY",
+      "network": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "default": 22
+          },
+          "identity_file": {
+            "type": "string"
+          },
+          "password_env": {
+            "type": "string",
+            "default": "DFTK_SSH_PASSWORD"
+          },
+          "timeout": {
+            "type": "integer",
+            "default": 15
+          }
+        },
+        "required": [
+          "host",
+          "username"
+        ]
+      },
+      "tags": [
+        "server",
+        "ssh",
+        "inventory"
+      ],
+      "produces": [
+        "server_inventory"
+      ],
+      "requires": [
+        "paramiko"
+      ],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "server.remote_snapshot",
+      "description": "Collect a fixed, bounded, read-only SSH forensic snapshot. Profiles cover baseline host inventory, incident-response state, containers, or web exposure; arbitrary shell commands are never accepted.",
+      "safety": "READ_ONLY",
+      "network": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "default": 22
+          },
+          "identity_file": {
+            "type": "string"
+          },
+          "password_env": {
+            "type": "string",
+            "default": "DFTK_SSH_PASSWORD"
+          },
+          "timeout": {
+            "type": "integer",
+            "default": 15
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "incident",
+              "containers",
+              "web"
+            ],
+            "default": "incident"
+          },
+          "max_output_bytes": {
+            "type": "integer",
+            "default": 65536
+          }
+        },
+        "required": [
+          "host",
+          "username"
+        ]
+      },
+      "tags": [
+        "server",
+        "ssh",
+        "remote",
+        "incident-response",
+        "forensics"
+      ],
+      "produces": [
+        "remote_snapshot",
+        "server_inventory",
+        "remote_hunt_leads"
+      ],
+      "requires": [
+        "paramiko"
+      ],
+      "deterministic": true,
+      "cost_hint": "high"
+    },
+    {
+      "name": "timeline.file_metadata",
+      "description": "Create a bounded filesystem metadata timeline from an extracted evidence tree.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 50000
+          },
+          "limit": {
+            "type": "integer",
+            "default": 100000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "timeline",
+        "filesystem"
+      ],
+      "produces": [
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "timeline.merge",
+      "description": "Merge time-bearing events from multiple dftk tool outputs or inline sources into one normalized, source-attributed timeline. Inputs are read-only; nothing is modified.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths to dftk Observation JSON files (each should contain facts.events)"
+          },
+          "inline": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Inline sources: {\"source\": label, \"events\": [...]} bundles or flat events with a 'source' key"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 200000
+          }
+        }
+      },
+      "tags": [
+        "timeline",
+        "correlation"
+      ],
+      "produces": [
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "tree.inventory",
+      "description": "Bounded inventory of an extracted evidence directory: file counts, extensions, total size and largest files.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 50000
+          },
+          "largest": {
+            "type": "integer",
+            "default": 100
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "filesystem",
+        "triage"
+      ],
+      "produces": [
+        "file_inventory"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "web.access_log_summary",
+      "description": "Summarize common Nginx/Apache access logs in an offline tree: clients, methods, status codes and requested URIs.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 200000
+          },
+          "sample_limit": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "web",
+        "logs",
+        "network"
+      ],
+      "produces": [
+        "web_requests",
+        "web_log_summary"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "web.config_candidates",
+      "description": "Discover likely web/application configuration files under an offline directory; optionally extract key names while redacting values.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 20000
+          },
+          "extract_keys": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "web",
+        "config_candidates"
+      ],
+      "produces": [
+        "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "web.config_extract",
+      "description": "Parse one explicit configuration file and return key/value structure. Secret-like values are redacted unless include_values=true.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "include_values": {
+            "type": "boolean",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "web",
+        "config",
+        "extract"
+      ],
+      "produces": [
+        "config_values"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "web.webshell_hunt",
+      "description": "Scan an extracted web/application tree for source-linked suspicious execution, request-input, obfuscation, and process-launch pattern combinations. Scores are triage leads, not malware verdicts.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "max_files": {
+            "type": "integer",
+            "default": 20000
+          },
+          "max_file_size": {
+            "type": "integer",
+            "default": 4194304
+          },
+          "hit_limit": {
+            "type": "integer",
+            "default": 1000
+          },
+          "min_score": {
+            "type": "integer",
+            "default": 4
+          }
+        },
+        "required": [
+          "root"
+        ]
+      },
+      "tags": [
+        "web",
+        "webshell",
+        "server",
+        "malware",
+        "hunt",
+        "forensics"
+      ],
+      "produces": [
+        "webshell_leads",
+        "code_indicators",
+        "hash"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "high"
+    },
+    {
+      "name": "windows.evtx_hunt",
+      "description": "Parse EVTX records into a source-linked timeline and flag high-value Windows security, PowerShell, service, scheduled-task, and Sysmon event classes. Hits are triage leads, not verdicts.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 100000
+          },
+          "event_limit": {
+            "type": "integer",
+            "default": 5000
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional case-insensitive text filter across normalized event fields."
+          },
+          "event_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Optional EventID allow-list."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "windows",
+        "evtx",
+        "hunt",
+        "timeline",
+        "threat-hunting"
+      ],
+      "produces": [
+        "evtx_events",
+        "timeline",
+        "hunt_hits"
+      ],
+      "requires": [
+        "python-evtx"
+      ],
+      "deterministic": true,
+      "cost_hint": "high"
+    },
+    {
+      "name": "windows.evtx_summary",
+      "description": "Summarize EVTX providers, event IDs and timestamps using python-evtx when installed.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 100000
+          },
+          "sample_limit": {
+            "type": "integer",
+            "default": 500
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "windows",
+        "evtx",
+        "timeline"
+      ],
+      "produces": [
+        "event_log_summary",
+        "timeline"
+      ],
+      "requires": [
+        "python-evtx"
+      ],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "windows.lnk",
+      "description": "Parse a Windows Shell Link (.lnk) shortcut with pure-Python parsing: recover the target path, file attributes, creation/access/write timestamps, and TrackerDataBlock (machine id / MAC).",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "windows",
+        "lnk",
+        "shortcut",
+        "timeline"
+      ],
+      "produces": [
+        "lnk_target",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "windows.mft",
+      "description": "Parse an NTFS $MFT file with pure-Python parsing: recover file/directory paths, Standard Information and $FILE_NAME timestamps, record flags and sizes. Best-effort full-path reconstruction via parent references.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "record_limit": {
+            "type": "integer",
+            "default": 200000
+          },
+          "deleted_only": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "windows",
+        "mft",
+        "timeline",
+        "filesystem"
+      ],
+      "produces": [
+        "mft_records",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "windows.prefetch",
+      "description": "Parse a Windows Prefetch file (.pf, versions 17/23/26/30) with pure-Python parsing: recover the executable path, prefetch hash, run count and last-run time(s), and the set of referenced files.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "windows",
+        "prefetch",
+        "execution",
+        "timeline"
+      ],
+      "produces": [
+        "prefetch_execution",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "windows.recyclebin",
+      "description": "Parse Windows Recycle Bin $I metadata files (Windows 10+): recover the original deleted file name, size and deletion time, and detect the paired $R data file when present.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "find_data": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "windows",
+        "recyclebin",
+        "timeline"
+      ],
+      "produces": [
+        "recyclebin_deleted",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "windows.registry_inventory",
+      "description": "Inventory a Windows Registry hive using python-registry when installed; never modifies the hive.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "key_limit": {
+            "type": "integer",
+            "default": 10000
+          },
+          "depth": {
+            "type": "integer",
+            "default": 2
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "windows",
+        "registry"
+      ],
+      "produces": [
+        "registry_inventory"
+      ],
+      "requires": [
+        "python-registry"
+      ],
+      "deterministic": true,
+      "cost_hint": "low"
+    },
+    {
+      "name": "windows.usb_artifacts",
+      "description": "Extract USBSTOR and MountedDevices artifacts from an offline SYSTEM Registry hive.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "system_hive": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "system_hive"
+        ]
+      },
+      "tags": [
+        "windows",
+        "registry",
+        "usb"
+      ],
+      "produces": [
+        "usb_devices"
+      ],
+      "requires": [
+        "python-registry"
+      ],
+      "deterministic": true,
+      "cost_hint": "low"
+    }
+  ]
+}

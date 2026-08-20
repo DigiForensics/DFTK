@@ -81,17 +81,23 @@ def _sql_ident(name:str)->str:
 
 @registry.tool(name='database.sql_dump_inventory',description='Inventory generic SQL text dumps (MySQL/PostgreSQL/SQLite-style) for databases, CREATE TABLE statements and INSERT counts without importing the dump.',
  safety=SafetyLevel.READ_ONLY,tags=('database','sql_dump','triage'),produces=('sql_schema','table_activity'),cost_hint='medium',
- parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'statement_limit':{'type':'integer','default':200000}},'required':['path']})
-def sql_dump_inventory(path:str,max_bytes:int=256*1024*1024,statement_limit:int=200000)->Observation:
+ parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'statement_limit':{'type':'integer','default':200000},'max_line_bytes':{'type':'integer','default':1048576}},'required':['path']})
+def sql_dump_inventory(path:str,max_bytes:int=256*1024*1024,statement_limit:int=200000,max_line_bytes:int=1024*1024)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('database.sql_dump_inventory',Status.ERROR,'SQL dump not found',errors=[str(p)])
-    tables={}; databases=[]; inserts={}; scanned=0; statements=0; buf=''; warnings=[]
+    if max_bytes <= 0 or statement_limit <= 0 or max_line_bytes <= 0:
+        return Observation('database.sql_dump_inventory',Status.ERROR,'SQL dump limits must be positive')
+    tables={}; databases=[]; inserts={}; scanned=0; statements=0; buf=''; warnings=[]; line_limited=False
     try:
         with p.open('rb') as f:
             while scanned<max_bytes and statements<statement_limit:
-                raw=f.readline()
+                raw=f.readline(max_line_bytes+1)
                 if not raw: break
                 scanned+=len(raw)
+                if len(raw)>max_line_bytes:
+                    line_limited=True
+                    warnings.append(f'line exceeded {max_line_bytes} bytes; parsing stopped before the remaining line content')
+                    break
                 line=raw.decode('utf-8','replace')
                 if line.lstrip().startswith(('--','#')): continue
                 buf+=line
@@ -117,7 +123,8 @@ def sql_dump_inventory(path:str,max_bytes:int=256*1024*1024,statement_limit:int=
     if statements>=statement_limit: warnings.append(f'statement parsing limited to {statement_limit}')
     rows=[{'table':name,**v} for name,v in sorted(tables.items())]
     ev=[Evidence(str(p),'sql_table',r['table'],locator='SQL text',method='bounded SQL statement inventory') for r in rows[:300]]
-    return Observation('database.sql_dump_inventory',Status.OK,f'Found {len(rows)} table name(s) across {statements} SQL statement(s)',facts={'databases':databases,'tables':rows,'bytes_scanned':scanned,'statements_scanned':statements},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
+    status=Status.PARTIAL if warnings or line_limited else Status.OK
+    return Observation('database.sql_dump_inventory',status,f'Found {len(rows)} table name(s) across {statements} SQL statement(s)',facts={'databases':databases,'tables':rows,'bytes_scanned':scanned,'statements_scanned':statements},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
 
 @registry.tool(name='database.sqlite_search',description='Search bounded SQLite tables/columns for a literal value using immutable read-only access; avoids requiring the Agent to construct schema-specific SQL first.',
  safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','search'),produces=('database_matches',),cost_hint='medium',

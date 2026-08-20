@@ -38,13 +38,13 @@ The original competition archive is retained only for provenance and knowledge m
 
 The optional chain-of-custody ledger (`--audit PATH`, or the `DFTK_AUDIT_LOG` environment variable) is a strictly additive side record. It is append-only, it is written outside the evidence tree at a path the caller chooses, and it never reads or rewrites evidence.
 
-Ledger writing is deliberately failure-tolerant: if the record cannot be serialized or the file cannot be written, the error is swallowed and the capability result is returned unchanged. Logging is never allowed to abort or alter an examination.
+Ledger writing is failure-tolerant: if a record cannot be serialized or written, the capability result is returned unchanged. Logging does not abort or alter an examination.
 
 Parameter values are recorded so a run can be reproduced, with two guards: keys matching a secret vocabulary (`password`, `passwd`, `token`, `secret`, `api_key`, `private_key`, `credential`, `auth`, `authorization`) are replaced with `<redacted>`, and strings longer than 4096 characters are truncated with an explicit omission marker. Treat the ledger as case material: it contains evidence paths and hashes, so it inherits the handling requirements of the case it documents.
 
 ## MCP policy boundary
 
-`dftk mcp` is local stdio-only. The server defaults to `READ_ONLY` with network disabled. The host process owner may deliberately launch with `--max-safety STATEFUL` and/or `--allow-network`; these controls are not exposed as model-callable MCP arguments, and `DESTRUCTIVE` is never an accepted MCP ceiling.
+`dftk mcp` runs locally over stdio. It defaults to `READ_ONLY` with network disabled. The host process owner may launch it with `--max-safety STATEFUL` or `--allow-network`; these controls are not MCP tool arguments, and `DESTRUCTIVE` is not an accepted MCP ceiling.
 
 The server also owns an explicit filesystem `--root`. Path-like capability parameters are checked before execution and must remain inside that root. The MCP workspace must also live beneath the root. This is an Agent integration guard; it does not replace normal examiner authorization or OS-level isolation.
 

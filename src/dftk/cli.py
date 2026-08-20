@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import shutil
+from types import SimpleNamespace
 from pathlib import Path
 
 from .catalog import load_builtin_tools
@@ -30,6 +31,7 @@ from .skill_bundle import (
     install_from_repo_root,
     install_skill,
 )
+from .manifest import capability_manifest
 
 from . import __version__ as TOOLKIT_VERSION  # single source of truth; never hardcode
 
@@ -57,11 +59,30 @@ def _load_params(args):
     return {}
 
 
-def _emit(data, out=None):
+def _emit(data, out=None, *, force: bool = False):
     text = json.dumps(data, ensure_ascii=False, indent=2, default=str)
     if out:
-        Path(out).write_text(text + "\n", encoding="utf-8")
+        target = Path(out)
+        if target.exists() and not force:
+            raise FileExistsError(f"refusing to overwrite existing output: {target} (pass --force to replace it)")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text + "\n", encoding="utf-8")
     print(text)
+
+
+def _observation_exit_code(status) -> int:
+    """Map an Observation status to a shell-friendly exit code.
+
+    Exit code 2 means the requested operation did not run to a usable result because
+    it was unsupported or blocked. This lets automation distinguish that condition
+    from a successful, possibly partial result (0) and an execution error (1).
+    """
+    value = getattr(status, "value", status)
+    if value in ("ok", "partial"):
+        return 0
+    if value in ("unsupported", "blocked"):
+        return 2
+    return 1
 
 
 def _spec_dict(spec):
@@ -80,10 +101,26 @@ def _spec_dict(spec):
 
 
 def _resolve_targets(spec):
-    if spec is None or spec.strip().lower() == "all":
+    normalized = (spec or "auto").strip().lower()
+    if normalized == "auto":
+        # Prefer an explicit host runtime marker. Falling back to exactly one
+        # existing host directory supports local Agents without requiring users
+        # to know an installation target; ambiguous machines use the portable
+        # AgentSkills directory instead of writing into multiple hosts.
+        markers = {
+            "codex": ("CODEX_HOME",), "claude": ("CLAUDE_CODE", "CLAUDECODE"),
+            "cursor": ("CURSOR_TRACE_ID",), "gemini": ("GEMINI_CLI",),
+        }
+        for target, names in markers.items():
+            if any(os.environ.get(name) for name in names):
+                return [target]
+        home = Path.home()
+        present = [target for target, relative in AGENT_SKILL_DIRS.items() if (home / relative).parent.exists()]
+        return present if len(present) == 1 else ["agents"]
+    if normalized == "all":
         return list(AGENT_SKILL_DIRS.keys())
     out = []
-    for target in spec.split(","):
+    for target in normalized.split(","):
         target = target.strip().lower()
         if not target:
             continue
@@ -106,6 +143,14 @@ def _cmd_skill(args):
     custom = getattr(args, "dir", None)
 
     if custom:
+        if getattr(args, "dry_run", False):
+            _emit({
+                "action": "install_dftk_skill",
+                "targets": {"custom": str(Path(custom).expanduser())},
+                "ref": ref or f"v{TOOLKIT_VERSION}",
+                "writes": False,
+            })
+            return 0
         try:
             installed = install_skill(ref, custom)
         except Exception as exc:  # noqa: BLE001
@@ -123,13 +168,26 @@ def _cmd_skill(args):
         return 2
 
     home = Path.home()
+    if getattr(args, "dry_run", False):
+        _emit({
+            "action": "install_dftk_skill",
+            "targets": {target: str(home / AGENT_SKILL_DIRS[target]) for target in targets},
+            "ref": ref or f"v{TOOLKIT_VERSION}",
+            "writes": False,
+        })
+        return 0
+
     installed_all: list[Path] = []
+    failures: dict[str, str] = {}
     repo_root = None
     try:
         repo_root = fetch_skill_repo(ref)
         for target in targets:
             base = home / AGENT_SKILL_DIRS[target]
-            installed_all.extend(install_from_repo_root(repo_root, base))
+            try:
+                installed_all.extend(install_from_repo_root(repo_root, base))
+            except Exception as exc:  # noqa: BLE001
+                failures[target] = str(exc)
     except Exception as exc:  # noqa: BLE001
         _emit({"error": f"failed to fetch/install DFTK skill: {exc}"})
         return 2
@@ -146,13 +204,94 @@ def _cmd_skill(args):
         f"\nInstalled DFTK skill + standalone skills for {len(targets)} "
         f"agent target(s): {', '.join(targets)}"
     )
+    if failures:
+        _emit({"status": "partial", "failed_targets": failures})
+        return 1
+    return 0
+
+
+def _agent_mcp_config(args):
+    """Build a portable, reviewable MCP launch entry for an Agent host.
+
+    This deliberately returns a fragment instead of editing a host's global
+    configuration file. Host configuration formats and trust prompts differ,
+    and an investigation Agent must not overwrite unrelated MCP connections.
+    """
+    root = Path(args.root).expanduser().resolve()
+    workspace = Path(args.workspace).expanduser().resolve()
+    if not root.is_dir():
+        raise ValueError(f"evidence root is not a directory: {root}")
+    if root == workspace or root in workspace.parents:
+        raise ValueError("workspace must be outside the evidence root")
+    launch_args = [
+        "mcp", "--root", str(root), "--workspace", str(workspace),
+        "--max-safety", args.max_safety, "--timeout", str(args.timeout),
+    ]
+    if args.allow_network:
+        launch_args.append("--allow-network")
+    if args.audit:
+        launch_args.extend(["--audit", str(Path(args.audit).expanduser().resolve())])
+    json_fragment = {"mcpServers": {"dftk": {"command": "dftk", "args": launch_args}}}
+    toml_args = ", ".join(json.dumps(item) for item in launch_args)
+    return {
+        "schema_version": "1",
+        "toolkit_version": TOOLKIT_VERSION,
+        "host_target": args.target,
+        "evidence_root": str(root),
+        "case_workspace": str(workspace),
+        "mcp_json": json_fragment,
+        "codex_toml": "[mcp_servers.dftk]\ncommand = \"dftk\"\nargs = [" + toml_args + "]\n",
+        "verification": [
+            "dftk mcp --root " + str(root) + " --workspace " + str(workspace) + " --check",
+            "Start a new Agent session after importing and approving the MCP entry.",
+        ],
+        "safety_note": "The server is READ_ONLY by default; only the host owner can raise policy or enable network access.",
+    }
+
+
+def _cmd_agent(args):
+    if args.agent_cmd != "setup":
+        _emit({"error": "unknown agent subcommand"})
+        return 2
+    try:
+        config = _agent_mcp_config(args)
+    except ValueError as exc:
+        _emit({"error": str(exc)})
+        return 2
+
+    workspace = Path(args.workspace).expanduser()
+    if args.dry_run:
+        config["writes"] = {"workspace": False, "config": False, "skills": False}
+        _emit(config)
+        return 0
+
+    workspace.mkdir(parents=True, exist_ok=True)
+    config["writes"] = {"workspace": True, "config": bool(args.config_out), "skills": bool(args.install_skill)}
+    if args.config_out:
+        try:
+            _emit(config, args.config_out, force=args.force)
+        except OSError as exc:
+            _emit({"error": str(exc)})
+            return 2
+    else:
+        _emit(config)
+
+    if args.install_skill:
+        # Reuse the hardened, version-pinned installer rather than duplicating
+        # fetch/extraction logic here.
+        skill_args = SimpleNamespace(
+            install=True, ref=args.ref, dir=None, target=args.target, dry_run=False,
+        )
+        result = _cmd_skill(skill_args)
+        if result:
+            return result
     return 0
 
 
 def _cmd_case(args):
     from .core.case import CaseError, CaseSession
 
-    session = CaseSession(getattr(args, "workspace", ".dftk") or ".dftk")
+    session = CaseSession(getattr(args, "workspace", None))
     cmd = getattr(args, "case_cmd", None)
     if cmd == "new":
         _emit(session.new(args.name))
@@ -177,14 +316,46 @@ def _cmd_case(args):
             caller=f"case:{args.case_id}",
         )
         _emit(obs.to_dict())
-        return 0 if obs.status.value in ("ok", "partial", "unsupported") else 1
+        return _observation_exit_code(obs.status)
     if cmd == "timeline":
         try:
             obs = session.timeline(args.case_id)
         except CaseError as exc:
             _emit({"error": str(exc)})
             return 2
-        _emit(obs.to_dict(), args.out)
+        try:
+            _emit(obs.to_dict(), args.out, force=args.force)
+        except OSError as exc:
+            _emit({"error": str(exc)})
+            return 2
+        return 0
+    if cmd == "graph":
+        try:
+            _emit(session.entity_graph(args.case_id).to_dict())
+        except CaseError as exc:
+            _emit({"error": str(exc)})
+            return 2
+        return 0
+    if cmd == "next":
+        try:
+            _emit(session.next_actions(args.case_id))
+        except CaseError as exc:
+            _emit({"error": str(exc)})
+            return 2
+        return 0
+    if cmd == "guided-intake":
+        try:
+            _emit(session.guided_intake(args.case_id, args.path, objective=args.objective, max_steps=args.max_steps))
+        except CaseError as exc:
+            _emit({"error": str(exc)})
+            return 2
+        return 0
+    if cmd == "brief":
+        try:
+            _emit(session.brief(args.case_id))
+        except CaseError as exc:
+            _emit({"error": str(exc)})
+            return 2
         return 0
     if cmd == "export":
         try:
@@ -193,8 +364,13 @@ def _cmd_case(args):
             _emit({"error": str(exc)})
             return 2
         if args.out:
-            Path(args.out).write_text(text, encoding="utf-8")
-            print(f"exported -> {args.out}")
+            target = Path(args.out)
+            if target.exists() and not args.force:
+                _emit({"error": f"refusing to overwrite existing output: {target} (pass --force to replace it)"})
+                return 2
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+            print(f"exported -> {target}")
         else:
             print(text)
         return 0
@@ -249,11 +425,32 @@ def _cmd_prepare(args):
 
 def _cmd_mcp(args):
     try:
-        from .mcp_server import run_mcp_server
+        from .mcp_server import DFTKMCPGateway, run_mcp_server
+
+        if getattr(args, "check", False):
+            gateway = DFTKMCPGateway(
+                root=args.root,
+                workspace=args.workspace,
+                allow_workspace_in_root=args.allow_workspace_in_root,
+                max_safety=args.max_safety,
+                allow_network=args.allow_network,
+                timeout_seconds=args.timeout,
+                audit=args.audit,
+            )
+            report = gateway.preflight()
+            report["preflight"] = {
+                "root_readable": True,
+                "workspace_writable": True,
+                "workspace_inside_root": gateway.workspace_inside_root,
+                "safe_evidence_isolation": not gateway.workspace_inside_root,
+            }
+            _emit(report)
+            return 0
 
         run_mcp_server(
             root=args.root,
             workspace=args.workspace,
+            allow_workspace_in_root=args.allow_workspace_in_root,
             max_safety=args.max_safety,
             allow_network=args.allow_network,
             timeout_seconds=args.timeout,
@@ -282,11 +479,18 @@ def main(argv=None):
     describe = sub.add_parser("describe")
     describe.add_argument("name")
 
+    search = sub.add_parser("search", help="find capabilities from an evidence task or keyword")
+    search.add_argument("query", nargs="?", default="")
+    search.add_argument("--tag", action="append")
+    search.add_argument("--produces")
+    search.add_argument("--limit", type=int, default=12)
+
     run = sub.add_parser("run")
     run.add_argument("name")
     run.add_argument("--params")
     run.add_argument("--params-file")
     run.add_argument("--out")
+    run.add_argument("--force", action="store_true", help="allow --out to replace an existing file")
     run.add_argument("--allow-network", action="store_true")
     run.add_argument(
         "--max-safety",
@@ -300,10 +504,12 @@ def main(argv=None):
     recipe.add_argument("--params")
     recipe.add_argument("--params-file")
     recipe.add_argument("--out")
+    recipe.add_argument("--force", action="store_true", help="allow --out to replace an existing file")
     recipe.add_argument("--audit", metavar="PATH", help="append a JSONL chain-of-custody record of this run to PATH")
 
     export = sub.add_parser("export-manifest")
     export.add_argument("--out")
+    export.add_argument("--force", action="store_true", help="allow --out to replace an existing file")
 
     doctor = sub.add_parser("doctor", help="check DFTK runtime, capabilities and optional integrations")
 
@@ -341,22 +547,50 @@ def main(argv=None):
     skill.add_argument("--install", action="store_true", help="fetch the DFTK-skill repo and install the main skill + standalone analysis skills")
     skill.add_argument(
         "--target",
-        default="all",
+        default="auto",
         metavar="LIST",
         help=(
-            'comma-separated targets or "all" '
+            '"auto" (default), comma-separated targets, or "all" '
             "(workbuddy,codebuddy,kimi,claude,codex,hermes,agents,cursor,gemini)"
         ),
     )
     skill.add_argument("--dir", metavar="DIR", help="install into a custom skills base directory instead of known Agent targets")
     skill.add_argument("--ref", metavar="REF", help="pin the DFTK-skill ref (tag/branch/sha); default: v<dftk version>")
+    skill.add_argument("--dry-run", action="store_true", help="show target directories without fetching or writing")
+
+    agent = sub.add_parser("agent", help="prepare a reviewable Agent Skill + MCP integration")
+    agent_sub = agent.add_subparsers(dest="agent_cmd", required=True)
+    agent_setup = agent_sub.add_parser("setup", help="create a bounded MCP config fragment and optionally install the matching Skill")
+    agent_setup.add_argument("--root", required=True, metavar="DIR", help="read-only evidence root exposed to MCP")
+    agent_setup.add_argument("--workspace", required=True, metavar="DIR", help="separate writable case workspace")
+    agent_setup.add_argument("--target", default="auto", help="Skill target for --install-skill (default: auto)")
+    agent_setup.add_argument("--install-skill", action="store_true", help="install the version-matched DFTK-skill bundle after setup")
+    agent_setup.add_argument("--ref", metavar="REF", help="pin DFTK-skill ref; default: v<dftk version>")
+    agent_setup.add_argument("--config-out", metavar="PATH", help="write the generated config JSON without replacing an existing file")
+    agent_setup.add_argument("--force", action="store_true", help="allow --config-out to replace an existing file")
+    agent_setup.add_argument("--dry-run", action="store_true", help="validate and show planned writes without creating files or installing skills")
+    agent_setup.add_argument("--max-safety", choices=["READ_ONLY", "STATEFUL"], default="READ_ONLY")
+    agent_setup.add_argument("--allow-network", action="store_true", help="include an authorized network opt-in in the launch fragment")
+    agent_setup.add_argument("--timeout", type=int, default=180, metavar="SECONDS")
+    agent_setup.add_argument("--audit", metavar="PATH", help="include a chain-of-custody audit ledger path in the launch fragment")
 
     case = sub.add_parser("case", help="build and correlate an investigation case / unified timeline")
-    case.add_argument("--workspace", default=".dftk", metavar="DIR", help="case workspace root (default: .dftk)")
+    case.add_argument("--workspace", metavar="DIR", help="case workspace root (default: $DFTK_WORKSPACE or ~/.dftk, outside evidence)")
     case_sub = case.add_subparsers(dest="case_cmd", required=True)
     case_new = case_sub.add_parser("new", help="create a new case and print its manifest")
     case_new.add_argument("--name")
     case_sub.add_parser("list", help="list cases in the workspace")
+    case_graph = case_sub.add_parser("graph", help="correlate entities across persisted Case Observations")
+    case_graph.add_argument("case_id")
+    case_next = case_sub.add_parser("next", help="show compact, deterministic Agent next actions for a Case")
+    case_next.add_argument("case_id")
+    case_guided = case_sub.add_parser("guided-intake", help="persist a controlled Agent first response as separate Case runs")
+    case_guided.add_argument("case_id")
+    case_guided.add_argument("path")
+    case_guided.add_argument("--objective")
+    case_guided.add_argument("--max-steps", type=int, default=2)
+    case_brief = case_sub.add_parser("brief", help="return a bounded Agent-context checkpoint for a Case")
+    case_brief.add_argument("case_id")
     case_run = case_sub.add_parser("run", help="run a tool and record its Observation in the case")
     case_run.add_argument("case_id")
     case_run.add_argument("tool")
@@ -372,25 +606,31 @@ def main(argv=None):
     case_timeline = case_sub.add_parser("timeline", help="merge all recorded Observations into one timeline")
     case_timeline.add_argument("case_id")
     case_timeline.add_argument("--out")
+    case_timeline.add_argument("--force", action="store_true", help="allow --out to replace an existing file")
     case_export = case_sub.add_parser("export", help="export a case report (json or markdown)")
     case_export.add_argument("case_id")
     case_export.add_argument("--format", choices=["json", "md"], default="json")
     case_export.add_argument("--out")
+    case_export.add_argument("--force", action="store_true", help="allow --out to replace an existing file")
 
     mcp = sub.add_parser("mcp", help="run the native local DFTK MCP server over stdio")
     mcp.add_argument("--root", default=".", metavar="DIR", help="filesystem evidence root visible to DFTK MCP (default: current directory)")
-    mcp.add_argument("--workspace", default=".dftk", metavar="DIR", help="DFTK case workspace inside --root (default: .dftk)")
+    mcp.add_argument("--workspace", metavar="DIR", help="writable case workspace outside --root (default: $DFTK_WORKSPACE or ~/.dftk)")
+    mcp.add_argument("--allow-workspace-in-root", action="store_true", help="allow derived case data inside the evidence root (not recommended)")
+    mcp.add_argument("--check", action="store_true", help="validate root, workspace, dependencies, and policy without starting the stdio server")
     mcp.add_argument("--max-safety", choices=["READ_ONLY", "STATEFUL"], default="READ_ONLY", help="server-owned capability safety ceiling")
     mcp.add_argument("--allow-network", action="store_true", help="server-owned opt-in for capabilities that declare network access")
     mcp.add_argument("--timeout", type=int, default=180, metavar="SECONDS", help="hard timeout for one capability run (default: 180)")
-    mcp.add_argument("--audit", nargs="?", const=".dftk/audit.jsonl", metavar="PATH",
+    mcp.add_argument("--audit", nargs="?", const="audit.jsonl", metavar="PATH",
                      help="record a JSONL chain-of-custody ledger of every MCP capability run "
-                          "(default location: .dftk/audit.jsonl when flag is given without a path)")
+                          "(default location: <workspace>/audit.jsonl when flag is given without a path)")
 
     args = parser.parse_args(argv)
 
     if args.cmd == "skill":
         return _cmd_skill(args)
+    if args.cmd == "agent":
+        return _cmd_agent(args)
     if args.cmd == "case":
         return _cmd_case(args)
     if args.cmd == "doctor":
@@ -409,13 +649,20 @@ def main(argv=None):
         except KeyError:
             _emit({"error": f"unknown tool: {args.name}"})
             return 2
+    if args.cmd == "search":
+        # The MCP gateway owns the same human-language matching vocabulary.
+        # Constructing it does not create a workspace or start an MCP server.
+        from .mcp_server import DFTKMCPGateway
+
+        gateway = DFTKMCPGateway(root=Path.cwd())
+        _emit(gateway.search(args.query, tags=args.tag, produces=args.produces, limit=args.limit))
+        return 0
     if args.cmd == "export-manifest":
-        data = {
-            "schema_version": "2",
-            "toolkit_version": TOOLKIT_VERSION,
-            "tools": [_spec_dict(spec) for spec in registry.specs()],
-        }
-        _emit(data, args.out)
+        try:
+            _emit(capability_manifest(), args.out, force=args.force)
+        except OSError as exc:
+            _emit({"error": str(exc)})
+            return 2
         return 0
 
     try:
@@ -427,8 +674,12 @@ def main(argv=None):
         name = args.name if args.name.startswith("recipe.") else "recipe." + args.name
         audit = ToolAuditLog(args.audit) if args.audit else None
         obs = registry.run(name, params, SafetyPolicy(), audit=audit, caller="cli")
-        _emit(obs.to_dict(), args.out)
-        return 0 if obs.status.value in ("ok", "partial", "unsupported") else 1
+        try:
+            _emit(obs.to_dict(), args.out, force=args.force)
+        except OSError as exc:
+            _emit({"error": str(exc)})
+            return 2
+        return _observation_exit_code(obs.status)
 
     policy = SafetyPolicy(
         max_level=SafetyLevel[args.max_safety],
@@ -436,8 +687,12 @@ def main(argv=None):
     )
     audit = ToolAuditLog(args.audit) if args.audit else None
     obs = registry.run(args.name, params, policy, audit=audit, caller="cli")
-    _emit(obs.to_dict(), args.out)
-    return 0 if obs.status.value in ("ok", "partial", "unsupported") else 1
+    try:
+        _emit(obs.to_dict(), args.out, force=args.force)
+    except OSError as exc:
+        _emit({"error": str(exc)})
+        return 2
+    return _observation_exit_code(obs.status)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dftk.primitives.windows import registry_inventory,evtx_summary
+from dftk.primitives.windows import registry_inventory,evtx_summary,evtx_hunt
 from dftk.primitives.e01 import e01_filesystem_inventory
 from dftk.core.models import Status
 
@@ -28,6 +28,8 @@ def test_evtx_dependency_is_explicit(tmp_path):
     p=tmp_path/'a.evtx'; p.write_bytes(b'ElfFile\0'+b'\0'*4096)
     obs=evtx_summary(str(p))
     assert obs.status in (Status.UNSUPPORTED,Status.ERROR)
+    hunt=evtx_hunt(str(p))
+    assert hunt.status in (Status.UNSUPPORTED,Status.ERROR)
 
 
 def test_e01_filesystem_dependency_is_explicit(tmp_path):

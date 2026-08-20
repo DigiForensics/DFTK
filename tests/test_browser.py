@@ -45,3 +45,11 @@ def test_chromium_cookie_inventory_redacts_value_by_default(tmp_path):
     p=tmp_path/'Cookies'; con=sqlite3.connect(p); con.execute('create table cookies(host_key text,name text,path text,expires_utc integer,is_secure integer,is_httponly integer,value text,encrypted_value blob)'); con.execute('insert into cookies values(?,?,?,?,?,?,?,?)',('.example.com','sid','/',13300000000000000,1,1,'plaintext',b'v10encrypted')); con.commit(); con.close()
     obs=chromium_cookies(str(p)); row=obs.facts['cookies'][0]
     assert row['host_key']=='.example.com'; assert 'value' not in row; assert row['value_present'] is True; assert row['encrypted_value_length']>0
+
+
+def test_chromium_downloads_unsupported_result_keeps_source_hash(tmp_path):
+    p=tmp_path/'History'; con=sqlite3.connect(p)
+    con.execute('create table downloads(unrecognized_column text)'); con.commit(); con.close()
+    obs=chromium_downloads(str(p))
+    assert obs.status.value=='unsupported'
+    assert obs.meta['source_sha256']

@@ -13,4 +13,4 @@
 # limitations under the License.
 
 # Import modules for registry side effects.
-from . import artifact, files, android, binary, crypto, linux, database, network, email_auth, e01, server, windows, windows_host, browser, timeline  # noqa: F401
+from . import artifact, files, android, binary, crypto, linux, database, network, email_auth, e01, server, windows, windows_host, browser, timeline, intake, correlation, malware, web_hunt  # noqa: F401

@@ -2,6 +2,33 @@
 
 All notable public changes to DFTK are recorded here.
 
+## 3.4.0 — Agent-native integration and investigation continuity (2026-08-21)
+
+New:
+
+- Added `dftk agent setup`, the primary Agent bootstrap. It creates a separate case
+  workspace, emits a reviewable portable MCP configuration (including a Codex TOML
+  fragment), and can install the matching DFTK-skill bundle in the same operation.
+  It never overwrites a host's global MCP configuration.
+- Added the Agent-first case controls used by the current DFTK-skill: controlled
+  guided intake, deterministic next actions, bounded case briefs, and entity graphs.
+- Added evidence intake, Windows EVTX hunting, fixed-profile read-only SSH remote
+  snapshots, YARA scanning, and static web-shell hunting capabilities.
+
+Changed:
+
+- Reworked the primary installation and MCP documentation around DFTK as the single
+  Agent entry point and a safe evidence-root / case-workspace boundary.
+
+## Unreleased
+
+- CLI runs now return exit code 2 for `unsupported` and `blocked` observations;
+  `ok`/`partial` return 0 and execution errors return 1.
+- The MCP optional dependency accepts the supported `mcp>=2.0.0,<3` range, matching
+  the runtime compatibility check.
+- Skill-bundle tar extraction, SQL dump line buffering, and Chromium download
+  provenance are being hardened for malformed or incomplete evidence.
+
 ## 3.3.0 — Chain-of-custody audit ledger & robustness (2026-08-16)
 
 New:
