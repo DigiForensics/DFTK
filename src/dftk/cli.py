@@ -107,12 +107,27 @@ def _resolve_targets(spec):
         # existing host directory supports local Agents without requiring users
         # to know an installation target; ambiguous machines use the portable
         # AgentSkills directory instead of writing into multiple hosts.
-        markers = {
-            "codex": ("CODEX_HOME",), "claude": ("CLAUDE_CODE", "CLAUDECODE"),
-            "cursor": ("CURSOR_TRACE_ID",), "gemini": ("GEMINI_CLI",),
-        }
-        for target, names in markers.items():
-            if any(os.environ.get(name) for name in names):
+        # Each Agent host exports a product-specific variable while it drives
+        # DFTK, so the detected host is the one that actually invoked this
+        # command. workbuddy (WORKBUDDY_PRODUCT_NAME / CODEBUDDY_HOST) and
+        # CodeBuddy share the CODEBUDDY_* family with distinct host values;
+        # a substring guards each so a workbuddy-desktop host never resolves to
+        # codebuddy and vice versa. Existing hosts match on presence only.
+        host_markers = [
+            ("workbuddy", "WORKBUDDY_PRODUCT_NAME", "workbuddy"),
+            ("workbuddy", "CODEBUDDY_HOST", "workbuddy"),
+            ("codebuddy", "CODEBUDDY_HOST", "codebuddy"),
+            ("codex", "CODEX_HOME", None),
+            ("claude", "CLAUDE_CODE", None),
+            ("claude", "CLAUDECODE", None),
+            ("cursor", "CURSOR_TRACE_ID", None),
+            ("gemini", "GEMINI_CLI", None),
+        ]
+        for target, name, substring in host_markers:
+            value = os.environ.get(name)
+            if not value:
+                continue
+            if substring is None or substring in value.lower():
                 return [target]
         home = Path.home()
         present = [target for target, relative in AGENT_SKILL_DIRS.items() if (home / relative).parent.exists()]

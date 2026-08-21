@@ -7,6 +7,59 @@ import tarfile
 import pytest
 
 from dftk.skill_bundle import _safe_extract_tar, install_from_repo_root
+from dftk.cli import AGENT_SKILL_DIRS, _resolve_targets
+
+
+# Env vars that _resolve_targets consults for host detection. Cleared between
+# cases so each test controls exactly one marker.
+_HOST_ENV_VARS = (
+    "WORKBUDDY_PRODUCT_NAME", "CODEBUDDY_HOST", "CODEX_HOME",
+    "CLAUDE_CODE", "CLAUDECODE", "CURSOR_TRACE_ID", "GEMINI_CLI",
+)
+
+
+def _clear_host_env(monkeypatch):
+    for var in _HOST_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_resolve_targets_auto_prefers_workbuddy_product_name(monkeypatch):
+    _clear_host_env(monkeypatch)
+    monkeypatch.setenv("WORKBUDDY_PRODUCT_NAME", "WorkBuddy")
+    assert _resolve_targets("auto") == ["workbuddy"]
+
+
+def test_resolve_targets_auto_prefers_workbuddy_host(monkeypatch):
+    _clear_host_env(monkeypatch)
+    monkeypatch.setenv("CODEBUDDY_HOST", "workbuddy-desktop")
+    assert _resolve_targets("auto") == ["workbuddy"]
+
+
+def test_resolve_targets_auto_codebuddy_host(monkeypatch):
+    _clear_host_env(monkeypatch)
+    monkeypatch.setenv("CODEBUDDY_HOST", "codebuddy-desktop")
+    assert _resolve_targets("auto") == ["codebuddy"]
+
+
+def test_resolve_targets_auto_workbuddy_never_resolves_to_codebuddy(monkeypatch):
+    # Guard against substring confusion: a workbuddy host must not match codebuddy.
+    _clear_host_env(monkeypatch)
+    monkeypatch.setenv("CODEBUDDY_HOST", "workbuddy-desktop")
+    assert _resolve_targets("auto") == ["workbuddy"]
+
+
+def test_resolve_targets_auto_existing_markers_unchanged(monkeypatch):
+    _clear_host_env(monkeypatch)
+    monkeypatch.setenv("CODEX_HOME", "/x")
+    assert _resolve_targets("auto") == ["codex"]
+    _clear_host_env(monkeypatch)
+    monkeypatch.setenv("CLAUDE_CODE", "1")
+    assert _resolve_targets("auto") == ["claude"]
+
+
+def test_resolve_targets_explicit_target_passthrough(monkeypatch):
+    assert _resolve_targets("workbuddy") == ["workbuddy"]
+    assert _resolve_targets("all") == list(AGENT_SKILL_DIRS.keys())
 
 
 def _make_fake_repo(root: Path) -> None:
