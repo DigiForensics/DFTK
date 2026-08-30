@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from __future__ import annotations
+import importlib.metadata
 from collections.abc import Callable
 from typing import Any
 from dataclasses import replace
@@ -20,8 +21,32 @@ from .models import Observation, Status, ToolSpec, SafetyLevel
 from .safety import SafetyPolicy, SafetyViolation
 from .external_tools import external_tool_available, EXTERNAL_TOOL_NAMES
 from .audit import ToolAuditLog, _get_default_audit_log
+from .path_policy import validate_params as _validate_path_params, PathEscapeError
+from .provenance import ProvenanceIndex
 
 ToolFunc = Callable[..., Observation]
+
+
+def _dftk_version() -> str:
+    """Toolkit version used to stamp provenance derivation nodes.
+
+    We prefer ``dftk.__version__`` (the version of the *running* source tree)
+    so auto-stamped provenance agrees with the manual modules, which do
+    ``from dftk import __version__``. Importing ``dftk`` at module load time
+    would be circular (``dftk/__init__`` imports this registry), but by the
+    time a tool actually runs the package is fully initialised, so a lazy
+    import here is safe. Falls back to installed-distribution metadata, then
+    to ``"unknown"``.
+    """
+    try:
+        from dftk import __version__ as v
+        return v
+    except Exception:
+        pass
+    try:
+        return importlib.metadata.version("dftk")
+    except Exception:
+        return "unknown"
 
 class ToolRegistry:
     def __init__(self) -> None:
@@ -43,10 +68,16 @@ class ToolRegistry:
              safety: SafetyLevel = SafetyLevel.READ_ONLY, network: bool = False,
              tags: tuple[str, ...] | list[str] = (), produces: tuple[str, ...] | list[str] = (),
              requires: tuple[str, ...] | list[str] = (), deterministic: bool = True,
-             cost_hint: str = "low"):
+             cost_hint: str = "low", path_roles: dict[str, str] | None = None):
         def deco(func: ToolFunc):
-            self.register(ToolSpec(name, description, safety, parameters, network,
-                                   tuple(tags), tuple(produces), tuple(requires), deterministic, cost_hint), func)
+            # Keyword construction: ToolSpec has no cost_hint field, so a positional
+            # cost_hint would silently collide with path_roles (the trailing field).
+            self.register(ToolSpec(
+                name=name, description=description, safety=safety, parameters=parameters,
+                network=network, tags=tuple(tags), produces=tuple(produces),
+                requires=tuple(requires), deterministic=deterministic,
+                path_roles=path_roles or {},
+            ), func)
             return func
         return deco
 
@@ -101,6 +132,30 @@ class ToolRegistry:
                 )
                 self._audit(audit, name, params, spec, out, caller)
                 return out
+        # 3.5.0: role-aware path validation. Only enforced when the tool declares
+        # path roles AND the policy carries both roots (the MCP server always does;
+        # a bare CLI leaves roots None and degrades to the weaker name-based guard).
+        if spec.path_roles and (policy.evidence_root is not None or policy.workspace_root is not None):
+            try:
+                resolved = _validate_path_params(
+                    params,
+                    spec.path_roles,
+                    evidence_root=policy.evidence_root,
+                    workspace_root=policy.workspace_root,
+                )
+            except PathEscapeError as e:
+                out = Observation(
+                    name, Status.BLOCKED,
+                    "Blocked by path policy",
+                    errors=[f"path policy violation: {e}"],
+                    warnings=[f"declared roles: {spec.path_roles}"],
+                )
+                self._audit(audit, name, params, spec, out, caller)
+                return out
+            # Hand the tool the validated, containment-checked absolute paths so a
+            # STATEFUL tool can never act on a raw, attacker-controlled string.
+            for pname, ppath in resolved.items():
+                params[pname] = str(ppath)
         func = self._funcs[name]
         try:
             try:
@@ -134,6 +189,7 @@ class ToolRegistry:
                 if not evidence.source_sha256 and known_hash:
                     evidence.source_sha256=known_hash
                 evidence.confidence=max(0.0,min(1.0,float(evidence.confidence)))
+            self._stamp_provenance(out, name)
             self._audit(audit, name, params, spec, out, caller)
             return out
         except Exception as e:
@@ -152,5 +208,59 @@ class ToolRegistry:
     ) -> None:
         if audit is not None and isinstance(out, Observation):
             audit.record(tool=name, params=params, observation=out, spec=spec, caller=caller)
+
+    def _stamp_provenance(self, out: Observation, name: str) -> None:
+        """Attach a baseline provenance chain for evidence-bearing observations.
+
+        DFTK's headline "evidence preservation" claim is only honest when *every*
+        tool that touches evidence records where that evidence came from. Four
+        privileged modules (files / filesystem / network / report) already build a
+        rich :class:`ProvenanceIndex` and set ``meta['provenance']`` themselves;
+        we must not clobber their hand-built chain, so we skip any observation
+        that already carries one.
+
+        For every other tool that returns evidence with a known SHA-256, we
+        register each evidence item as a ``source`` artifact. Because
+        :class:`ProvenanceIndex` derives deterministic ids from
+        ``(source_artifact, locator)``, these auto-generated nodes never collide
+        with the manual modules' nodes (different locator prefixes) and stay
+        stable across re-runs. This turns the Chain-of-Custody from "present in 4
+        modules" into "present everywhere", which is what the reports assert.
+        """
+        if out.meta.get("provenance") is not None:
+            return
+        version = _dftk_version()
+        prov = ProvenanceIndex()
+        sources: list = []
+        for ev in out.evidence:
+            sha = (
+                ev.source_sha256
+                or out.meta.get("source_sha256")
+                or out.meta.get("container_sha256")
+                or ""
+            )
+            if not sha:
+                continue
+            locator = f"evidence:{ev.locator or ev.path or name}"
+            sources.append(
+                prov.add(
+                    source_artifact="",
+                    locator=locator,
+                    tool=name,
+                    version=version,
+                    sha256=sha,
+                    kind="source",
+                    state="LIVE",
+                )
+            )
+        if not sources:
+            return
+        out.meta["provenance"] = prov.to_dict()
+        # Surface the same source nodes in the report's "Recovered / Derived
+        # Artifacts" section so the custody chain is visible, not just internal.
+        existing = {d.artifact_id for d in out.derived_artifacts}
+        for art in sources:
+            if art.artifact_id not in existing:
+                out.derived_artifacts.append(art)
 
 registry = ToolRegistry()

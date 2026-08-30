@@ -17,6 +17,7 @@ from pathlib import Path
 import struct, tarfile, zipfile, os
 from dftk.core.registry import registry
 from dftk.core.models import Observation, Evidence, Status, SafetyLevel
+from dftk.core.provenance import ProvenanceIndex
 from dftk.core.helpers import hash_file, sha256_file, printable_strings, read_file_bounded_observation
 
 @registry.tool(
@@ -172,14 +173,25 @@ def archive_inventory(path: str, limit: int = 10000) -> Observation:
     return Observation("archive.inventory",Status.OK,f"Inventoried {len(members)} {kind} member(s)",facts={"format":kind,"members":members,"member_count":len(members)},
         evidence=[Evidence(str(p),"archive_inventory",f"{len(members)} members",locator="central-directory" if kind=="zip" else "member-table")],meta={"source_sha256":sha256_file(p)})
 
-@registry.tool(name='archive.extract_safe',description='Extract ZIP/TAR members into a separate workspace with path-traversal, member-count and total-size limits. Source archive is never modified.',
- safety=SafetyLevel.STATEFUL,tags=('archive','workspace','extract'),produces=('extracted_files',),cost_hint='medium',
- parameters={'type':'object','properties':{'path':{'type':'string'},'output_dir':{'type':'string'},'member_limit':{'type':'integer','default':20000},'total_size_limit':{'type':'integer','default':2147483648},'overwrite':{'type':'boolean','default':False}},'required':['path','output_dir']})
+@registry.tool(name='archive.extract_safe',description='Extract ZIP/TAR members into a separate workspace with path-traversal, symlink/junction, member-count and total-size limits. Source archive is never modified. Each extracted member is registered as a DerivedArtifact so the recovery chain is provable.',
+ safety=SafetyLevel.STATEFUL,tags=('archive','workspace','extract'),produces=('extracted_files','derived_artifacts'),cost_hint='medium',
+ parameters={'type':'object','properties':{'path':{'type':'string'},'output_dir':{'type':'string'},'member_limit':{'type':'integer','default':20000},'total_size_limit':{'type':'integer','default':2147483648},'overwrite':{'type':'boolean','default':False}},'required':['path','output_dir']},
+ path_roles={'path':'EVIDENCE_INPUT','output_dir':'WORKSPACE_OUTPUT'})
 def archive_extract_safe(path:str,output_dir:str,member_limit:int=20000,total_size_limit:int=2*1024*1024*1024,overwrite:bool=False)->Observation:
+    from dftk import __version__ as DFTK_VERSION
     src=Path(path); out=Path(output_dir)
     if not src.is_file(): return Observation('archive.extract_safe',Status.ERROR,'Archive not found',errors=[str(src)])
     out.mkdir(parents=True,exist_ok=True)
-    root=out.resolve(); extracted=[]; total=0; warnings=[]
+    root=out.resolve(); extracted=[]; derived=[]; total=0; warnings=[]
+    # Provenance: the original archive is the root artifact; every extracted
+    # member derives from it. This is the 3.5.0 fix for the STATEFUL gap — the
+    # registry already validated both paths against their declared roles, so
+    # ``src`` is a read-only Evidence file and ``root`` is inside the Workspace.
+    prov=ProvenanceIndex()
+    source_sha=sha256_file(src)
+    source_art=prov.add(source_artifact='',locator=f'file:{src.name}',tool='archive.extract_safe',
+                        version=DFTK_VERSION,sha256=source_sha,size=src.stat().st_size,kind='evidence',state='LIVE')
+    derived.append(source_art)  # the original archive is itself the root provenance node
     def target(name:str)->Path:
         nonlocal root
         dest=(root/name).resolve()
@@ -204,7 +216,13 @@ def archive_extract_safe(path:str,output_dir:str,member_limit:int=20000,total_si
                             total+=len(chunk)
                             if total>total_size_limit: raise ValueError('expanded-size limit exceeded during extraction')
                             wf.write(chunk)
-                    extracted.append({'path':str(dest),'relative':str(dest.relative_to(root)),'size':dest.stat().st_size,'sha256':sha256_file(dest)})
+                    member_sha=sha256_file(dest)
+                    rel=str(dest.relative_to(root))
+                    extracted.append({'path':str(dest),'relative':rel,'size':dest.stat().st_size,'sha256':member_sha})
+                    art=prov.add(source_artifact=source_art.artifact_id,locator=f'archive_member:{rel}',
+                                 tool='archive.extract_safe',version=DFTK_VERSION,sha256=member_sha,
+                                 size=dest.stat().st_size,state='LIVE')
+                    derived.append(art)
         elif tarfile.is_tarfile(src):
             with tarfile.open(src,'r:*') as t:
                 infos=t.getmembers()
@@ -226,11 +244,17 @@ def archive_extract_safe(path:str,output_dir:str,member_limit:int=20000,total_si
                             total+=len(chunk)
                             if total>total_size_limit: raise ValueError('expanded-size limit exceeded during extraction')
                             wf.write(chunk)
-                    extracted.append({'path':str(dest),'relative':str(dest.relative_to(root)),'size':dest.stat().st_size,'sha256':sha256_file(dest)})
+                    member_sha=sha256_file(dest)
+                    rel=str(dest.relative_to(root))
+                    extracted.append({'path':str(dest),'relative':rel,'size':dest.stat().st_size,'sha256':member_sha})
+                    art=prov.add(source_artifact=source_art.artifact_id,locator=f'archive_member:{rel}',
+                                 tool='archive.extract_safe',version=DFTK_VERSION,sha256=member_sha,
+                                 size=dest.stat().st_size,state='LIVE')
+                    derived.append(art)
         else: return Observation('archive.extract_safe',Status.UNSUPPORTED,'Unsupported archive format')
     except (OSError,ValueError,zipfile.BadZipFile,tarfile.TarError) as e:
-        return Observation('archive.extract_safe',Status.ERROR,'Safe extraction failed',errors=[str(e)],facts={'extracted':extracted},warnings=warnings)
-    return Observation('archive.extract_safe',Status.PARTIAL if warnings else Status.OK,f'Extracted {len(extracted)} file(s) into workspace',facts={'output_dir':str(root),'extracted':extracted,'total_bytes':total},evidence=[Evidence(str(src),'workspace_extract',str(root),locator='archive members',note='stateful workspace operation; source unchanged')],warnings=warnings,meta={'source_sha256':sha256_file(src)})
+        return Observation('archive.extract_safe',Status.ERROR,'Safe extraction failed',errors=[str(e)],facts={'extracted':extracted},warnings=warnings,derived_artifacts=derived)
+    return Observation('archive.extract_safe',Status.PARTIAL if warnings else Status.OK,f'Extracted {len(extracted)} file(s) into workspace',facts={'output_dir':str(root),'extracted':extracted,'total_bytes':total},evidence=[Evidence(str(src),'workspace_extract',str(root),locator='archive members',note='stateful workspace operation; source unchanged',artifact_id=source_art.artifact_id,derivation={'tool':'archive.extract_safe','version':DFTK_VERSION})],warnings=warnings,derived_artifacts=derived,meta={'source_sha256':source_sha,'provenance':prov.to_dict()})
 
 @registry.tool(name='file.strings_unicode',description='Extract bounded UTF-16LE/UTF-16BE printable strings with byte offsets; useful for Windows/native artifacts that ASCII strings miss.',
  safety=SafetyLevel.READ_ONLY,tags=('file','strings','unicode'),produces=('strings',),

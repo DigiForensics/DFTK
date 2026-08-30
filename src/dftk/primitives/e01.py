@@ -24,7 +24,7 @@ def e01_inventory(path:str)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation("image.e01_inventory",Status.ERROR,"E01 segment not found",errors=[str(p)])
     try: import pyewf
-    except ImportError: return Observation("image.e01_inventory",Status.UNSUPPORTED,"pyewf is not installed",errors=["install an environment that provides pyewf/libewf Python bindings"],meta={"container_sha256":sha256_file(p)})
+    except ImportError: return Observation("image.e01_inventory",Status.UNSUPPORTED,"pyewf is not installed",errors=["install optional dependency: pip install 'dftk[image]' (pyewf) to open E01/EWF images"],meta={"container_sha256":sha256_file(p)})
     h=None; warnings=[]
     try:
         names=pyewf.glob(str(p)); h=pyewf.handle(); h.open(names)
@@ -52,7 +52,7 @@ def e01_filesystem_inventory(path:str,entry_limit:int=2000)->Observation:
     try:
         import pyewf,pytsk3
     except ImportError as e:
-        return Observation('image.e01_filesystem_inventory',Status.UNSUPPORTED,'pyewf and pytsk3 are required',errors=[f'missing dependency: {getattr(e,"name",str(e))}','install libewf/pyewf and pytsk3 in the forensic environment'],meta={'container_sha256':sha256_file(p)})
+        return Observation('image.e01_filesystem_inventory',Status.UNSUPPORTED,'pyewf and pytsk3 are required',errors=[f'missing dependency: {getattr(e,"name",str(e))}',"install optional dependency: pip install 'dftk[image]' (pyewf + pytsk3) to read E01 filesystem"],meta={'container_sha256':sha256_file(p)})
 
     class EwfImgInfo(pytsk3.Img_Info):
         def __init__(self,handle):

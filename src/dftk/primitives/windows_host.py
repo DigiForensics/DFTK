@@ -152,7 +152,7 @@ def _parse_mft_record(rec: bytearray, base: int, entry_no: int) -> dict | None:
                     "accessed": _filetime_to_iso(_u64(rec, cstart + 32)),
                     "flags": _u32(rec, cstart + 0x38),
                     "size": _u64(rec, cstart + 0x30),
-                    "allocated": _u64(rec, cstart + 0x40),
+                    "allocated": _u64(rec, cstart + 0x28),
                 }
                 name_len = rec[cstart + 0x40]
                 raw = bytes(rec[cstart + 0x42:cstart + 0x42 + name_len * 2])
@@ -314,48 +314,72 @@ def prefetch(path: str) -> Observation:
         return Observation("windows.prefetch", Status.UNSUPPORTED, "Not a Prefetch (SCCA) file",
                            errors=["missing SCCA signature"], meta={"source_sha256": h})
     version = _u32(data, 0)
-    name_off = _u32(data, 0x0C)
-    name_len = _u32(data, 0x10)
-    pf_hash = _u32(data, 0x14)
-    exe_name = ""
-    if name_off + name_len * 2 <= len(data) and name_len:
-        exe_name = _utf16(data[name_off:name_off + name_len * 2])
-    metrics_off = _u32(data, 0x1C)
-    metrics_count = _u32(data, 0x20)
-    trace_off = _u32(data, 0x24)
-    trace_count = _u32(data, 0x28)
-    entry_size = {17: 0x14, 23: 0x20, 26: 0x20, 30: 0x20}.get(version, 0x20)
-    refs = _read_prefetch_trace(data, trace_off, trace_count, entry_size)
+    if version not in (17, 23, 26, 30, 31):
+        return Observation("windows.prefetch", Status.UNSUPPORTED,
+                           f"Unsupported Prefetch version {version}", meta={"source_sha256": h})
+
+    # File header is 84 bytes. The executable name is stored *inline* as a
+    # UTF-16LE string (up to 29 chars + NUL) starting at 0x10; the prefetch hash
+    # is a DWORD at 0x4C. (Offset model verified against libscca / forensics.wiki.)
+    # The executable name is stored inline as a UTF-16LE string (up to 30 chars /
+    # 60 bytes) starting at 0x10, null-terminated in real files. Decode the full
+    # field and let _utf16 stop at the first NUL; this is robust to both
+    # terminated and truncated buffers (no off-by-one from a stray NUL byte).
+    exe_name = _utf16(data[0x10:0x10 + 60])
+    pf_hash = _u32(data, 0x4C)
+    file_size = _u32(data, 0x0C)
+
+    # The version-dependent file-information block begins immediately after the
+    # 84-byte header at 0x54 and is 68/156/220 bytes for v17/23/26. Its leading
+    # 36 bytes carry the section offsets/counts (metrics, trace chains, filename
+    # strings, volumes); the trailing run-count / last-run fields differ per version.
+    base = 0x54
+    if base + 0x20 > len(data):
+        return Observation("windows.prefetch", Status.PARTIAL, "truncated file information block",
+                           facts={"version": version, "executable": exe_name,
+                                  "prefetch_hash": f"0x{pf_hash:08X}"},
+                           meta={"source_sha256": h})
+    metrics_off = _u32(data, base + 0x00)
+    metrics_count = _u32(data, base + 0x04)
+    trace_off = _u32(data, base + 0x08)
+    trace_count = _u32(data, base + 0x0C)
+    fname_off = _u32(data, base + 0x10)
+    fname_size = _u32(data, base + 0x14)
+    volumes_off = _u32(data, base + 0x18)
+    volumes_count = _u32(data, base + 0x1C)
+
+    # Trace-chain array entries are 12 bytes across all versions; the second DWORD
+    # holds the absolute offset of the referenced filename string (section C).
+    refs = _read_prefetch_trace(data, trace_off, trace_count, 0x0C)
+
+    # Per-version positions of last-run FILETIME and run count inside the block.
+    last_run_off = {17: 0x24, 23: 0x2C, 26: 0x2C, 30: 0x2C, 31: 0x2C}.get(version, 0x2C)
+    run_count_off = {17: 0x3C, 23: 0x44, 26: 0x7C, 30: 0x7C, 31: 0x7C}.get(version, 0x7C)
+    multi = version in (26, 30, 31)
 
     run_count = None
     last_runs: list[str] = []
-    best_effort = False
-    if version == 17:
-        if 0x98 + 12 <= len(data):
-            run_count = _u32(data, 0x98)
-            for t in range(0x9C, 0x9C + 8 * 8, 8):
-                iso = _filetime_to_iso(_u64(data, t)) if t + 8 <= len(data) else None
-                if iso:
-                    last_runs.append(iso)
-    else:
-        # v23/26/30: run count and last-run are stored in the file-information section.
-        # Best-effort: last-run is the leading FILETIME of the metrics array header on these
-        # versions; run count is read from the historical 0x98 offset when it looks valid.
-        if metrics_off + 8 <= len(data):
-            ft = _u64(data, metrics_off)
-            iso = _filetime_to_iso(ft)
+    notes = []
+    if base + run_count_off + 4 <= len(data):
+        rc = _u32(data, base + run_count_off)
+        if 1 <= rc <= 1_000_000:
+            run_count = rc
+    if multi:
+        for t in range(base + last_run_off, base + last_run_off + 8 * 8, 8):
+            if t + 8 > len(data):
+                break
+            iso = _filetime_to_iso(_u64(data, t))
             if iso:
                 last_runs.append(iso)
-                best_effort = True
-        if 0x98 + 4 <= len(data):
-            rc = _u32(data, 0x98)
-            if 1 <= rc <= 1_000_000:
-                run_count = rc
-                best_effort = True
+    else:
+        if base + last_run_off + 8 <= len(data):
+            iso = _filetime_to_iso(_u64(data, base + last_run_off))
+            if iso:
+                last_runs.append(iso)
+    if version != 17:
+        notes.append("Prefetch v23+ run-count / last-run parsed per libscca layout "
+                     "(positions differ from v17); confirm with a specialist tool (TSK/prefetch-parser).")
 
-    notes = []
-    if best_effort:
-        notes.append("run count / last-run parsed best-effort for Prefetch v23+; confirm with a specialist parser")
     return Observation(
         "windows.prefetch",
         Status.OK,
@@ -364,10 +388,13 @@ def prefetch(path: str) -> Observation:
             "version": version,
             "executable": exe_name,
             "prefetch_hash": f"0x{pf_hash:08X}",
+            "file_size": file_size,
             "run_count": run_count,
             "last_run_times": last_runs,
             "referenced_file_count": len(refs),
             "referenced_files": refs[:2000],
+            "section_offsets": {"metrics": metrics_off, "trace": trace_off,
+                                 "filename_strings": fname_off, "volumes": volumes_off},
         },
         evidence=[Evidence(str(p), "prefetch_executable", exe_name, locator="executable",
                            source_sha256=h, method="Prefetch parser")],
@@ -554,3 +581,48 @@ def recyclebin(path: str, find_data: bool = True) -> Observation:
                            source_sha256=h, method="Recycle Bin $I parser")],
         meta={"source_sha256": h},
     )
+
+
+# --------------------------------------------------------------------------- #
+# Shared MFT path index (cross-artifact correlation)
+# --------------------------------------------------------------------------- #
+
+def build_mft_path_index(path: str, record_limit: int = 200000) -> dict:
+    """Return ``{mft_entry_number: full_path}`` for an ``$MFT`` file.
+
+    Other host artifacts (e.g. the USN Journal) reference files by their 48-bit
+    MFT entry number encoded in the File Reference Number; this index lets them
+    resolve that number to a full NTFS path. The iteration mirrors ``windows.mft``
+    exactly (same stride, same USA handling, same parent walk) so the produced
+    paths are consistent with that tool. Best-effort only: records whose name is
+    not resident in the first 1024 bytes are not indexed.
+    """
+    p = Path(path)
+    if not p.is_file():
+        return {}
+    data, err = read_file_bounded_observation("windows.mft", p, 8 * 1024 * 1024 * 1024)
+    if err:
+        return {}
+    stride = 1024
+    off = 0
+    n = 0
+    records: list[dict] = []
+    while off + 48 <= len(data) and n < record_limit:
+        sig = bytes(data[off:off + 4])
+        if sig in (b"FILE", b"BAAD"):
+            rec = bytearray(data[off:off + stride])
+            entry = _parse_mft_record(rec, 0, off // stride)
+            if entry is None:
+                off += stride
+                continue
+            records.append(entry)
+            alloc = _u32(data, off + 0x1C)
+            step = alloc if 0 < alloc <= 0x10000 else stride
+        else:
+            step = stride
+        off += step
+        n += 1
+    parents: dict[int, tuple[str, int]] = {
+        e["entry"]: (e["name"], e["parent"]) for e in records if e["name"]
+    }
+    return {e["entry"]: _build_path(parents, e["entry"]) for e in records if e["entry"] in parents}

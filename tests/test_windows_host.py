@@ -128,45 +128,51 @@ def test_mft_records_and_paths():
     assert recs["secret.txt"]["path"].endswith("secret.txt")
     assert recs["secret.txt"]["si"]["creation"] is not None
     assert recs["secret.txt"]["fn"]["size"] == 1234
+    assert recs["secret.txt"]["fn"]["allocated"] == 1234
 
 
 def _prefetch_file(version: int, exe: str, refs: list[str], run_count: int, last_run: int) -> bytes:
+    """Build a *real-format* Prefetch file per the libscca / forensics.wiki layout:
+    - 84-byte header with the executable name inline (UTF-16LE) at 0x10 and the
+      prefetch hash DWORD at 0x4C;
+    - a version-17 file-information block at 0x54 with the section offsets/counts
+      and the last-run FILETIME + run count at the spec offsets.
+    """
     exe_u = exe.encode("utf-16-le")
-    name_off = 0x54
-    trace_off = 0x100  # after the v17 header region incl. 8 last-run slots (0x9C..0xDC)
-    buf = bytearray(trace_off)
-    buf[name_off:name_off + len(exe_u)] = exe_u
-    entry_size = {17: 0x14, 23: 0x20, 26: 0x20, 30: 0x20}[version]
-    entries = bytearray()
+    if len(exe_u) > 58:
+        exe_u = exe_u[:58]
+    header = bytearray(0x54)
+    struct.pack_into("<I", header, 0, version)
+    header[4:8] = b"SCCA"
+    header[0x10:0x10 + len(exe_u)] = exe_u             # inline name
+    header[0x10 + len(exe_u):0x10 + len(exe_u) + 2] = b"\x00\x00"  # UTF-16 NUL terminator
+    struct.pack_into("<I", header, 0x4C, 0xDEADBEEF)  # hash
+
+    trace_entries = bytearray()
     names_blob = bytearray()
-    names_base = trace_off + len(refs) * entry_size  # names sit after all entries
+    trace_base = 0x54 + 0x44                          # 0x54 header + 68-byte v17 block
+    names_base = trace_base + len(refs) * 0x0C
     for r in refs:
         ru = r.encode("utf-16-le") + b"\x00\x00"
-        fname_off = names_base + len(names_blob)  # absolute offset
-        entry = struct.pack("<I", 0)          # duration/unknown
-        entry += struct.pack("<I", fname_off)  # filename offset (absolute)
-        entry += struct.pack("<I", 0)          # ... (rest ignored)
-        if len(entry) < entry_size:
-            entry += b"\x00" * (entry_size - len(entry))
-        entries += entry
+        fname_abs = names_base + len(names_blob)
+        e = bytearray(0x0C)                           # 12-byte trace-chain entry
+        struct.pack_into("<I", e, 4, fname_abs)       # absolute filename-string offset
+        trace_entries += e
         names_blob += ru
-    trace_entries = entries + names_blob
-    # header
-    struct.pack_into("<I", buf, 0, version)
-    buf[4:8] = b"SCCA"
-    struct.pack_into("<I", buf, 0x0C, name_off)
-    struct.pack_into("<I", buf, 0x10, len(exe))
-    struct.pack_into("<I", buf, 0x14, 0xDEADBEEF)  # hash
-    struct.pack_into("<I", buf, 0x1C, 0)  # metrics offset (unused, count 0)
-    struct.pack_into("<I", buf, 0x20, 0)
-    struct.pack_into("<I", buf, 0x24, trace_off)  # trace offset
-    struct.pack_into("<I", buf, 0x28, len(refs))
-    if version == 17:
-        struct.pack_into("<I", buf, 0x98, run_count)
-        struct.pack_into("<Q", buf, 0x9C, last_run)
-    buf += trace_entries
-    struct.pack_into("<I", buf, 8, len(buf))
-    return bytes(buf)
+
+    fi = bytearray(0x44)                              # v17 file-information block (68 bytes)
+    struct.pack_into("<I", fi, 0x00, 0)              # metrics array offset (unused)
+    struct.pack_into("<I", fi, 0x04, 0)              # metrics count
+    struct.pack_into("<I", fi, 0x08, trace_base)     # trace chains offset
+    struct.pack_into("<I", fi, 0x0C, len(refs))      # trace count
+    struct.pack_into("<I", fi, 0x10, names_base)     # filename strings offset
+    struct.pack_into("<I", fi, 0x14, len(names_blob))  # filename strings size
+    struct.pack_into("<I", fi, 0x18, 0)              # volumes offset
+    struct.pack_into("<I", fi, 0x1C, 0)              # volumes count
+    struct.pack_into("<Q", fi, 0x24, last_run)       # last run (FILETIME)
+    struct.pack_into("<I", fi, 0x3C, run_count)      # run count
+
+    return bytes(header + fi + trace_entries + names_blob)
 
 
 def test_prefetch_v17():

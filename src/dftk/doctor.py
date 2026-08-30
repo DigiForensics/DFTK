@@ -36,6 +36,7 @@ _OPTIONAL_IMPORTS = {
     "email:spf": "spf",
     "disk:pyewf": "pyewf",
     "disk:pytsk3": "pytsk3",
+    "disk:esedb": "esedb",
 }
 
 

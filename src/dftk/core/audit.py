@@ -22,6 +22,7 @@ side record used to reconstruct the provenance of an analysis.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -41,6 +42,11 @@ _SECRET_KEY_RE = re.compile(
 
 _MAX_PARAM_STR = 4096
 _MAX_PARAM_DEPTH = 6
+_GENESIS = "genesis"  # previous_hash of the first record in a ledger
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 class ToolAuditLog:
@@ -66,33 +72,128 @@ class ToolAuditLog:
         caller: str = "cli",
     ) -> None:
         try:
-            rec = {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "tool": tool,
-                "caller": caller,
+            # Collect distinct evidence hashes. The same SHA-256 can legitimately
+            # appear both as an evidence item's source_sha256 and as a derived
+            # artifact's sha256 (e.g. the auto-stamped source node in
+            # registry._stamp_provenance mirrors the evidence it came from), so we
+            # de-duplicate to keep the ledger a true set, not a multiset.
+            seen: set[str] = set()
+            evidence_hashes: list[str] = []
+            for e in observation.evidence:
+                if e.source_sha256 and e.source_sha256 not in seen:
+                    seen.add(e.source_sha256)
+                    evidence_hashes.append(e.source_sha256)
+            for d in getattr(observation, "derived_artifacts", []):
+                s = getattr(d, "sha256", "")
+                if s and s not in seen:
+                    seen.add(s)
+                    evidence_hashes.append(s)
+            params_digest = _sha256(json.dumps(self._redact(params), ensure_ascii=False, sort_keys=True, default=str))
+            result_digest = _sha256(json.dumps({
                 "status": observation.status.value,
                 "summary": observation.summary,
-                "safety": spec.safety.name if spec is not None else None,
-                "network": spec.network if spec is not None else None,
-                "tags": list(spec.tags) if spec is not None else None,
-                "requires": list(spec.requires) if spec is not None else None,
-                "params": self._redact(params),
-                "evidence_hashes": [
-                    e.source_sha256 for e in observation.evidence if e.source_sha256
-                ],
                 "errors": list(observation.errors),
-            }
-            line = json.dumps(rec, ensure_ascii=False, default=str)
+            }, ensure_ascii=False, default=str))
+            evidence_digest = _sha256(json.dumps(sorted(evidence_hashes), ensure_ascii=False))
         except Exception:
             # Never let ledger serialization break the tool run.
             return
         try:
             with self._lock:
+                prev = self._last_record_hash()
+                seq = self._next_sequence()
+                rec = {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "tool": tool,
+                    "caller": caller,
+                    "sequence": seq,
+                    "status": observation.status.value,
+                    "summary": observation.summary,
+                    "safety": spec.safety.name if spec is not None else None,
+                    "network": spec.network if spec is not None else None,
+                    "tags": list(spec.tags) if spec is not None else None,
+                    "requires": list(spec.requires) if spec is not None else None,
+                    "params": self._redact(params),
+                    "evidence_hashes": evidence_hashes,
+                    "errors": list(observation.errors),
+                    "params_digest": params_digest,
+                    "result_digest": result_digest,
+                    "evidence_digest": evidence_digest,
+                }
+                rec["previous_hash"] = prev
+                body = json.dumps(rec, ensure_ascii=False, sort_keys=True, default=str)
+                rec["record_hash"] = _sha256(prev + "|" + body)
+                line = json.dumps(rec, ensure_ascii=False, sort_keys=True, default=str)
                 with self.path.open("a", encoding="utf-8") as fh:
                     fh.write(line + "\n")
         except OSError:
             # Ledger I/O failure must not surface to the forensic caller.
             return
+
+    # -- hash chain helpers ------------------------------------------------
+    def _last_record_hash(self) -> str:
+        try:
+            last = None
+            with self.path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line:
+                        last = line
+            if last is None:
+                return _GENESIS
+            return json.loads(last).get("record_hash", _GENESIS)
+        except (OSError, json.JSONDecodeError):
+            return _GENESIS
+
+    def _next_sequence(self) -> int:
+        try:
+            n = 0
+            with self.path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if line.strip():
+                        n += 1
+            return n + 1
+        except OSError:
+            return 1
+
+    @classmethod
+    def verify(cls, path: str | os.PathLike[str]) -> dict[str, Any]:
+        """Replay the ledger and confirm the hash chain is intact.
+
+        Returns ``{"valid": True, "records": N, "reason": "chain intact"}`` or
+        ``{"valid": False, "broken_at": <seq>, "line": <n>, "reason": <str>}``.
+        """
+        p = Path(path)
+        if not p.exists():
+            return {"valid": False, "broken_at": 0, "reason": "ledger file not found"}
+        prev = _GENESIS
+        seq = 0
+        try:
+            with p.open("r", encoding="utf-8") as fh:
+                for lineno, line in enumerate(fh, start=1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    rec = json.loads(line)
+                    stored_prev = rec.get("previous_hash", _GENESIS)
+                    if stored_prev != prev:
+                        return {
+                            "valid": False, "broken_at": seq + 1, "line": lineno,
+                            "reason": f"previous_hash mismatch: expected {prev}, got {stored_prev}",
+                        }
+                    body = {k: v for k, v in rec.items() if k != "record_hash"}
+                    body_str = json.dumps(body, ensure_ascii=False, sort_keys=True, default=str)
+                    expected_hash = _sha256(prev + "|" + body_str)
+                    if rec.get("record_hash") != expected_hash:
+                        return {
+                            "valid": False, "broken_at": seq + 1, "line": lineno,
+                            "reason": "record_hash mismatch (content tampered)",
+                        }
+                    prev = rec["record_hash"]
+                    seq += 1
+        except json.JSONDecodeError as e:
+            return {"valid": False, "broken_at": seq + 1, "reason": f"malformed JSON at line {lineno}: {e}"}
+        return {"valid": True, "records": seq, "reason": "chain intact"}
 
     @staticmethod
     def _redact(value: Any, depth: int = 0) -> Any:

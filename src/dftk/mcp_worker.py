@@ -95,11 +95,19 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
     audit = ToolAuditLog(audit_path) if audit_path else None
     caller = "mcp"
 
+    # 3.5.0: evidence/workspace roots let the registry enforce each declared
+    # path parameter's role (read-only Evidence Root, writable Workspace). The
+    # MCP server owns both roots, so this is where the separation becomes real.
+    evidence_root = request.get("evidence_root")
+    workspace_root = request.get("workspace_root")
+    policy = SafetyPolicy(
+        max_level=SafetyLevel[max_safety],
+        allow_network=allow_network,
+        evidence_root=Path(evidence_root) if evidence_root else None,
+        workspace_root=Path(workspace_root) if workspace_root else None,
+    )
+
     if action == "run":
-        policy = SafetyPolicy(
-            max_level=SafetyLevel[max_safety],
-            allow_network=allow_network,
-        )
         obs = registry.run(name, params, policy, audit=audit, caller=caller)
         obs_d = obs.to_dict()
         # The top-level ok MUST mirror the observation status so a client that
@@ -118,6 +126,8 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
             max_safety=max_safety,
             audit=audit,
             caller=f"mcp:case:{case_id}",
+            evidence_root=request.get("evidence_root"),
+            workspace_root=request.get("workspace_root"),
         )
         obs_d = obs.to_dict()
         return {

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
+from pathlib import Path
 from .models import SafetyLevel
 
 class SafetyViolation(RuntimeError):
@@ -22,6 +23,12 @@ class SafetyViolation(RuntimeError):
 class SafetyPolicy:
     max_level: SafetyLevel = SafetyLevel.READ_ONLY
     allow_network: bool = False
+    # 3.5.0: explicit Evidence / Workspace roots. When both are set, the registry
+    # enforces each declared path parameter's PathRole (read-only Evidence Root,
+    # writable Workspace). Left as None for a bare CLI, where the weaker
+    # name-based checks apply.
+    evidence_root: Path | None = None
+    workspace_root: Path | None = None
 
     def check(self, *, level: SafetyLevel, network: bool = False) -> None:
         if level > self.max_level:

@@ -419,6 +419,8 @@ class DFTKMCPGateway:
             "params": params,
             "max_safety": self.max_safety,
             "allow_network": self.allow_network,
+            "evidence_root": str(self.root),
+            "workspace_root": str(self.workspace),
         }
         if self.audit_path is not None:
             request["audit"] = str(self.audit_path)

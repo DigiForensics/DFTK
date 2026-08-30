@@ -19,6 +19,7 @@ import xml.etree.ElementTree as ET
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Evidence,Status,SafetyLevel
 from dftk.core.helpers import sha256_file
+from dftk.core.hive import parse_hive, parse_hive_header, recover_deleted_keys
 
 
 def _registry_module():
@@ -28,6 +29,25 @@ def _registry_module():
     except ImportError:
         return None
 
+
+def _registry_inventory_native(p: Path, key_limit: int, depth: int) -> Observation:
+    """Pure-Python fallback for ``windows.registry_inventory`` (no python-registry)."""
+    h = sha256_file(p)
+    data, err = _read_hive_bytes(p)
+    if err is not None:
+        return Observation('windows.registry_inventory',Status.ERROR,'Not a registry hive',errors=[err],meta={'source_sha256':h})
+    try:
+        parsed = parse_hive(data, max_depth=max(depth, 64), max_keys=max(key_limit, 200000))
+    except Exception as e:
+        return Observation('windows.registry_inventory',Status.ERROR,'Hive parsing failed',errors=[f'{type(e).__name__}: {e}'],meta={'source_sha256':h})
+    keys=[]; ev=[]
+    _flatten_tree(parsed['root'], depth, key_limit, keys, ev, h)
+    warnings=[f'key inventory limited to {key_limit}'] if len(keys) >= key_limit else []
+    return Observation('windows.registry_inventory',Status.OK,
+        f'Inventoried {len(keys)} registry key(s) (pure-Python)',
+        facts={'root':parsed['root'].get('name'),'keys':keys,'deleted_key_count':len(parsed['deleted_keys'])},
+        evidence=ev[:300],warnings=warnings,meta={'source_sha256':h})
+
 @registry.tool(name='windows.registry_inventory',description='Inventory a Windows Registry hive using python-registry when installed; never modifies the hive.',
  safety=SafetyLevel.READ_ONLY,tags=('windows','registry'),produces=('registry_inventory',),requires=('python-registry',),
  parameters={'type':'object','properties':{'path':{'type':'string'},'key_limit':{'type':'integer','default':10000},'depth':{'type':'integer','default':2}},'required':['path']})
@@ -36,7 +56,8 @@ def registry_inventory(path:str,key_limit:int=10000,depth:int=2)->Observation:
     if not p.is_file(): return Observation('windows.registry_inventory',Status.ERROR,'Registry hive not found',errors=[str(p)])
     RegistryModule=_registry_module()
     if RegistryModule is None:
-        return Observation('windows.registry_inventory',Status.UNSUPPORTED,'python-registry is not installed',errors=['install dftk[windows] or python-registry'],meta={'source_sha256':sha256_file(p)})
+        # Fall back to DFTK's pure-Python parser (zero external dependency).
+        return _registry_inventory_native(p, key_limit, depth)
     try:
         hive=RegistryModule.Registry(str(p)); root=hive.root()
         h=sha256_file(p)
@@ -82,7 +103,9 @@ def usb_artifacts(system_hive:str)->Observation:
         hive=RegistryModule.Registry(str(p))
         current=1
         try: current=int(hive.open('Select').value('Current').value())
-        except (KeyError,ValueError,TypeError): current=1
+        except (KeyError,ValueError,TypeError,RegistryModule.RegistryKeyNotFoundException):
+            # Missing/!unreadable Select -> assume ControlSet001 (the common default).
+            current=1
         ccs=f'ControlSet{current:03d}'
         devices=[]; ev=[]; warnings=[]
         try:
@@ -145,3 +168,74 @@ def evtx_summary(path:str,limit:int=100000,sample_limit:int=500)->Observation:
     if malformed: warnings.append(f'{malformed} record(s) could not be parsed as XML')
     if count>=limit: warnings.append(f'event parsing limited to {limit}')
     return Observation('windows.evtx_summary',Status.PARTIAL if malformed else Status.OK,f'Parsed {count} EVTX record(s)',facts={'event_count':count,'providers':dict(providers.most_common(100)),'event_ids':dict(ids.most_common(200)),'samples':samples},evidence=[Evidence(str(p),'evtx_summary',count,locator='records',source_sha256=sha256_file(p),method='python-evtx')],warnings=warnings,meta={'source_sha256':sha256_file(p)})
+
+
+def _read_hive_bytes(p: Path) -> tuple[bytes, str | None]:
+    data = p.read_bytes()
+    try:
+        parse_hive_header(data)  # validates the "regf" signature
+    except ValueError as e:
+        return data, str(e)
+    return data, None
+
+
+def _flatten_tree(node: dict, depth: int, key_limit: int, out: list, ev: list,
+                  src_sha: str) -> None:
+    if not node or len(out) >= key_limit:
+        return
+    row = {'path': node.get('path', ''), 'last_write': node.get('last_write'),
+           'subkey_count': node.get('subkey_count', 0),
+           'value_count': node.get('value_count', 0),
+           'values': node.get('values', [])}
+    out.append(row)
+    ev.append(Evidence(src_sha, 'registry_key', node.get('path', ''),
+                       locator=node.get('path', ''), method='dftk-hive'))
+    if depth > 0:
+        for sub in node.get('subkeys', []):
+            _flatten_tree(sub, depth - 1, key_limit, out, ev, src_sha)
+
+
+@registry.tool(name='windows.registry_tree',description='Parse a Windows Registry hive (REGF) with DFTK\'s pure-Python parser and return the live key tree (names, LastWrite timestamps, values). No external dependency.',
+ safety=SafetyLevel.READ_ONLY,tags=('windows','registry'),produces=('registry_tree',),
+ parameters={'type':'object','properties':{'path':{'type':'string'},'depth':{'type':'integer','default':3},'key_limit':{'type':'integer','default':5000}},'required':['path']})
+def registry_tree(path:str,depth:int=3,key_limit:int=5000)->Observation:
+    p=Path(path)
+    if not p.is_file(): return Observation('windows.registry_tree',Status.ERROR,'Registry hive not found',errors=[str(p)])
+    data, err = _read_hive_bytes(p)
+    if err is not None:
+        return Observation('windows.registry_tree',Status.ERROR,'Not a registry hive',errors=[err],meta={'source_sha256':sha256_file(p)})
+    try:
+        parsed = parse_hive(data, max_depth=max(depth, 64), max_keys=max(key_limit, 200000))
+    except Exception as e:
+        return Observation('windows.registry_tree',Status.ERROR,'Hive parsing failed',errors=[f'{type(e).__name__}: {e}'],meta={'source_sha256':sha256_file(p)})
+    h = sha256_file(p)
+    keys=[]; ev=[]
+    _flatten_tree(parsed['root'], depth, key_limit, keys, ev, h)
+    warnings=[f'live key inventory limited to {key_limit}'] if len(keys) >= key_limit else []
+    return Observation('windows.registry_tree',Status.OK,f'Parsed live tree: {parsed["live_key_count"]} key(s) under root',
+        facts={'hive_name':parsed['header']['hive_name'],'clean':parsed['header']['clean'],
+               'root':parsed['root'].get('name'),'live_key_count':parsed['live_key_count'],
+               'keys':keys,'deleted_key_count':len(parsed['deleted_keys'])},
+        evidence=ev[:300],warnings=warnings,meta={'source_sha256':h})
+
+
+@registry.tool(name='windows.registry_deleted_keys',description='Recover deleted/unreachable key nodes (nk) from a Windows Registry hive using DFTK\'s pure-Python parser. Deleted keys remain in the hive as free/unlinked cells; we walk the live tree to learn reachable cells, then scan every cell for an nk signature that is free or unreachable. No external dependency.',
+ safety=SafetyLevel.READ_ONLY,tags=('windows','registry','deleted'),produces=('deleted_registry_keys',),
+ parameters={'type':'object','properties':{'path':{'type':'string'},'limit':{'type':'integer','default':500}},'required':['path']})
+def registry_deleted_keys(path:str,limit:int=500)->Observation:
+    p=Path(path)
+    if not p.is_file(): return Observation('windows.registry_deleted_keys',Status.ERROR,'Registry hive not found',errors=[str(p)])
+    data, err = _read_hive_bytes(p)
+    if err is not None:
+        return Observation('windows.registry_deleted_keys',Status.ERROR,'Not a registry hive',errors=[err],meta={'source_sha256':sha256_file(p)})
+    try:
+        deleted = recover_deleted_keys(data, limit=limit)
+    except Exception as e:
+        return Observation('windows.registry_deleted_keys',Status.ERROR,'Deleted-key recovery failed',errors=[f'{type(e).__name__}: {e}'],meta={'source_sha256':sha256_file(p)})
+    h = sha256_file(p)
+    ev=[Evidence(h,'registry_deleted_key',d.get('name',''),locator=d.get('partial_path',''),
+                 method='dftk-hive') for d in deleted[:300]]
+    return Observation('windows.registry_deleted_keys',Status.OK,
+        f'Recovered {len(deleted)} deleted/unreachable key candidate(s)',
+        facts={'deleted_key_count':len(deleted),'deleted_keys':deleted},
+        evidence=ev,meta={'source_sha256':h})

@@ -24,7 +24,12 @@ def test_default_tool_surface_is_read_only_except_explicit_workspace_actions():
     assert specs
     stateful=[s.name for s in specs if s.safety == SafetyLevel.STATEFUL]
     destructive=[s.name for s in specs if s.safety == SafetyLevel.DESTRUCTIVE]
-    assert stateful == ['archive.extract_safe']
+    # Explicit workspace-writing operations are intentionally STATEFUL: archive
+    # extraction, filesystem extraction, HTTP body extraction (which writes a
+    # recovered download to the workspace as a DerivedArtifact), and HTML report
+    # rendering.
+    assert stateful == ['archive.extract_safe', 'case.report_html', 'filesystem.extract',
+                        'network.http_sessions']
     assert destructive == []
 
 

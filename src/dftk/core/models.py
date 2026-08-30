@@ -17,6 +17,8 @@ from dataclasses import dataclass, field, asdict
 from enum import IntEnum, Enum
 from typing import Any
 
+from .provenance import DerivedArtifact
+
 class SafetyLevel(IntEnum):
     READ_ONLY = 0
     STATEFUL = 1
@@ -39,6 +41,9 @@ class Evidence:
     source_sha256: str = ""
     confidence: float = 1.0
     method: str = ""
+    artifact_id: str = ""       # provenance id when this evidence is a derived artifact
+    derivation: dict[str, Any] = field(default_factory=dict)  # Derivation snapshot
+    state: str = ""             # LIVE | DELETED_CANDIDATE | CARVED | PARTIAL | RECOVERED
 
 @dataclass
 class Observation:
@@ -50,6 +55,7 @@ class Observation:
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
+    derived_artifacts: list[DerivedArtifact] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -67,4 +73,5 @@ class ToolSpec:
     produces: tuple[str, ...] = ()
     requires: tuple[str, ...] = ()
     deterministic: bool = True
+    path_roles: dict[str, str] = field(default_factory=dict)
     cost_hint: str = "low"

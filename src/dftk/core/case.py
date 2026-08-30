@@ -33,6 +33,7 @@ from typing import Any, Iterator
 from .models import Observation, SafetyLevel, Status
 from .registry import registry
 from .safety import SafetyPolicy
+from .audit import ToolAuditLog
 from .timeline_core import merge_events
 
 DEFAULT_WORKSPACE = ".dftk"
@@ -226,6 +227,8 @@ class CaseSession:
         max_safety: str = "READ_ONLY",
         audit: Any = None,
         caller: str | None = None,
+        evidence_root: Any = None,
+        workspace_root: Any = None,
     ) -> tuple[Observation, dict]:
         """Run and persist one capability, returning its exact manifest entry.
 
@@ -245,6 +248,8 @@ class CaseSession:
                 policy = SafetyPolicy(
                     max_level=SafetyLevel[max_safety],
                     allow_network=allow_network,
+                    evidence_root=Path(evidence_root) if evidence_root else None,
+                    workspace_root=Path(workspace_root) if workspace_root else None,
                 )
                 obs = registry.run(
                     tool,
@@ -343,6 +348,43 @@ class CaseSession:
         if fmt == "md":
             return _render_markdown(report)
         return json.dumps(report, ensure_ascii=False, indent=2)
+
+    def verify(self, case_id: str, audit_path: str | None = None) -> dict[str, Any]:
+        """Verify a case's internal integrity and (optionally) its audit ledger.
+
+        Checks performed:
+          * manifest schema is intact and each run has a readable artifact file;
+          * the audit ledger hash chain (if ``audit_path`` given, or the case
+            workspace default ``audit.jsonl``) is unbroken.
+
+        Returns ``{"valid": True, ...}`` or ``{"valid": False, "reason": ...}``.
+        """
+        manifest = self._manifest(case_id)
+        checks: list[dict[str, Any]] = []
+        for run in manifest.get("runs", []):
+            seq = run.get("seq")
+            artifact = self._run_artifact_path(case_id, run)
+            ok = artifact.exists() and artifact.is_file()
+            checks.append({"seq": seq, "artifact": str(artifact), "present": ok})
+        artifacts_ok = all(c["present"] for c in checks)
+
+        ledger_result: dict[str, Any] | None = None
+        if audit_path:
+            ledger_result = ToolAuditLog.verify(audit_path)
+        else:
+            default = self._case_dir(case_id) / "audit.jsonl"
+            if default.exists():
+                ledger_result = ToolAuditLog.verify(default)
+
+        valid = artifacts_ok and (ledger_result is None or ledger_result.get("valid", False))
+        return {
+            "valid": valid,
+            "case_id": case_id,
+            "runs": len(checks),
+            "artifacts_intact": artifacts_ok,
+            "artifact_checks": checks,
+            "audit_ledger": ledger_result,
+        }
 
 
 def _render_markdown(report: dict) -> str:

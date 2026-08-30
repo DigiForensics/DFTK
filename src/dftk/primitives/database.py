@@ -18,6 +18,19 @@ import sqlite3
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Evidence,Status,SafetyLevel
 from dftk.core.helpers import sha256_file
+from dftk.core.sqlite_forensic import (
+    parse_sqlite_header, parse_wal, reconstruct_logical_pages, walk_table_leaves,
+    parse_schema, recover_deleted, PAGE_TYPE_NAMES, read_varint,
+)
+
+
+def _load_bytes(path: str, max_bytes: int = 256 * 1024 * 1024) -> bytes:
+    """Read an evidence file fully, bounded. Returns bytes."""
+    p = Path(path)
+    size = p.stat().st_size
+    if size > max_bytes:
+        raise ValueError(f"file too large for forensic load: {size} > {max_bytes}")
+    return p.read_bytes()
 
 @registry.tool(name="database.sqlite_inventory",description="Open SQLite in read-only URI mode and report objects, schemas and optional row counts.",safety=SafetyLevel.READ_ONLY,
  parameters={"type":"object","properties":{"path":{"type":"string"},"count_rows":{"type":"boolean","default":True},"table_limit":{"type":"integer","default":500}},"required":["path"]})
@@ -156,3 +169,126 @@ def sqlite_search(path:str,query:str,case_sensitive:bool=False,table_limit:int=2
     if len(hits)>=result_limit: warnings.append(f'results limited to {result_limit}')
     ev=[Evidence(str(p),'sqlite_match',h['value'],locator=f"table:{h['table']};column:{h['column']};rowid:{h['rowid']}",method='read-only SQLite literal search') for h in hits[:300]]
     return Observation('database.sqlite_search',Status.PARTIAL if warnings else Status.OK,f'Found {len(hits)} SQLite match(es)',facts={'query':query,'matches':hits,'tables_scanned':len(tables),'columns_scanned':scanned_cols},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
+
+# --------------------------------------------------------------------------- #
+# DFTK 3.5.0 — SQLite forensic depth (own bounded parser, no sqlite3 reliance)
+# --------------------------------------------------------------------------- #
+
+@registry.tool(name='database.sqlite_forensic_inventory',description='Forensic inventory of a SQLite database: 100-byte header fields (page size, change counter, freelist, schema cookie, autovacuum, encoding, page count) plus a page-type distribution. Uses a direct byte parser, not the SQLite engine.',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','forensic'),produces=('sqlite_header','page_distribution'),
+ parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
+def sqlite_forensic_inventory(path:str,max_bytes:int=256*1024*1024)->Observation:
+    try: data=_load_bytes(path,max_bytes)
+    except (OSError,ValueError) as e: return Observation('database.sqlite_forensic_inventory',Status.ERROR,'Cannot read SQLite evidence',errors=[str(e)])
+    try: hdr=parse_sqlite_header(data)
+    except ValueError as e: return Observation('database.sqlite_forensic_inventory',Status.UNSUPPORTED,'Not a SQLite database',errors=[str(e)],meta={'source_sha256':sha256_file(path)})
+    page_size=hdr['page_size']; num_pages=len(data)//page_size
+    in_hdr=hdr['in_header_db_size_pages']
+    dist:dict[str,int]={}
+    for pn in range(1,num_pages+1):
+        start=(pn-1)*page_size; pt=data[start] if start<len(data) else 0
+        dist[PAGE_TYPE_NAMES.get(pt, f'type_{pt}')]=dist.get(PAGE_TYPE_NAMES.get(pt, f'type_{pt}'),0)+1
+    facts={'header':hdr,'page_size':page_size,'page_count_file':num_pages,'page_count_header':in_hdr,
+           'page_distribution':dist,'freelist_total_header':hdr['total_freelist_pages'],
+           'wal_present':Path(path+'-wal').is_file()}
+    ev=[Evidence(str(path),'sqlite_header',page_size,locator='byte 0..100',note='direct byte parse')]
+    return Observation('database.sqlite_forensic_inventory',Status.OK,'SQLite forensic inventory complete',facts=facts,evidence=ev,meta={'source_sha256':sha256_file(path)})
+
+@registry.tool(name='database.sqlite_pages',description='Enumerate every page in a SQLite database with its type, cell count, freeblock and fragmented-byte metadata. Low-level structural map.',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','forensic'),produces=('page_map'),
+ parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'page_limit':{'type':'integer','default':100000}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
+def sqlite_pages(path:str,max_bytes:int=256*1024*1024,page_limit:int=100000)->Observation:
+    try: data=_load_bytes(path,max_bytes)
+    except (OSError,ValueError) as e: return Observation('database.sqlite_pages',Status.ERROR,'Cannot read SQLite evidence',errors=[str(e)])
+    try: hdr=parse_sqlite_header(data)
+    except ValueError as e: return Observation('database.sqlite_pages',Status.UNSUPPORTED,'Not a SQLite database',errors=[str(e)],meta={'source_sha256':sha256_file(path)})
+    page_size=hdr['page_size']; num_pages=len(data)//page_size; pages=[]
+    for pn in range(1,min(num_pages,page_limit)+1):
+        start=(pn-1)*page_size; page=data[start:start+page_size]
+        if len(page)<8: continue
+        ptype=page[0]; name=PAGE_TYPE_NAMES.get(ptype,f'type_{ptype}')
+        num_cells=int.from_bytes(page[3:5],'big')
+        frag=int(page[7]) if ptype in (10,13) else 0
+        first_fb=int.from_bytes(page[1:3],'big') if ptype in (10,13) else 0
+        pages.append({'page':pn,'type':name,'cells':num_cells,'freeblocks':first_fb,'fragmented_bytes':frag})
+    return Observation('database.sqlite_pages',Status.OK,f'Mapped {len(pages)} page(s)',facts={'page_size':page_size,'page_count':num_pages,'pages':pages},meta={'source_sha256':sha256_file(path)})
+
+@registry.tool(name='database.sqlite_wal',description='Parse a SQLite WAL (-wal) file: header (magic, salts, checksums), and every frame with page number, commit flag, salt match and native-order checksum validity.',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','wal'),produces=('wal_frames'),
+ parameters={'type':'object','properties':{'wal_path':{'type':'string'},'db_path':{'type':'string'}},'required':['wal_path']})
+def sqlite_wal(wal_path:str,db_path:str='')->Observation:
+    wp=Path(wal_path)
+    if not wp.is_file(): return Observation('database.sqlite_wal',Status.ERROR,'WAL file not found',errors=[str(wp)])
+    try: wb=wp.read_bytes()
+    except OSError as e: return Observation('database.sqlite_wal',Status.ERROR,'WAL read failed',errors=[str(e)])
+    try: wal=parse_wal(wb)
+    except ValueError as e: return Observation('database.sqlite_wal',Status.UNSUPPORTED,'Not a WAL file',errors=[str(e)],meta={'source_sha256':sha256_file(wp)})
+    valid=sum(1 for f in wal['frames'] if f['valid'])
+    facts={'header':wal['header'],'frame_count':wal['frame_count'],'valid_frames':valid,
+           'committed_frames':sum(1 for f in wal['frames'] if f['commit'])}
+    if db_path: facts['db_sha256']=sha256_file(Path(db_path))
+    ev=[Evidence(str(wp),'wal_frame',f['page_number'],locator=f"frame:{f['index']}",state='LIVE' if f['valid'] else 'PARTIAL') for f in wal['frames'][:300]]
+    return Observation('database.sqlite_wal',Status.OK if valid else Status.PARTIAL,f'Parsed {wal["frame_count"]} WAL frame(s), {valid} valid',facts=facts,evidence=ev,meta={'source_sha256':sha256_file(wp)})
+
+@registry.tool(name='database.sqlite_freelist',description='Enumerate the SQLite freelist: the trunk chain and every freelist leaf page, comparing against the header total. Freelist pages hold dropped table/record data.',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','freelist'),produces=('freelist'),
+ parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
+def sqlite_freelist(path:str,max_bytes:int=256*1024*1024)->Observation:
+    try: data=_load_bytes(path,max_bytes)
+    except (OSError,ValueError) as e: return Observation('database.sqlite_freelist',Status.ERROR,'Cannot read SQLite evidence',errors=[str(e)])
+    try: hdr=parse_sqlite_header(data)
+    except ValueError as e: return Observation('database.sqlite_freelist',Status.UNSUPPORTED,'Not a SQLite database',errors=[str(e)],meta={'source_sha256':sha256_file(path)})
+    page_size=hdr['page_size']; num_pages=len(data)//page_size
+    pages={pn:data[(pn-1)*page_size:pn*page_size] for pn in range(1,num_pages+1)}
+    # Walk trunk chain.
+    trunk=int.from_bytes(pages.get(1,b'\x00'*100)[32:36],'big')
+    leaf_pages=[]; trunk_pages=[]; seen=set(); guard=0
+    while trunk and trunk in pages and trunk not in seen and guard<100000:
+        seen.add(trunk); trunk_pages.append(trunk)
+        t=pages[trunk]; n_leaf=int.from_bytes(t[4:8],'big')
+        for i in range(n_leaf):
+            off=8+i*4
+            if off+4>len(t): break
+            leaf_pages.append(int.from_bytes(t[off:off+4],'big'))
+        nxt=int.from_bytes(t[0:4],'big'); trunk=nxt; guard+=1
+    facts={'header_total_freelist':hdr['total_freelist_pages'],'freelist_trunk_pages':trunk_pages,
+           'freelist_leaf_pages':leaf_pages,'freelist_total':len(trunk_pages)+len(leaf_pages)}
+    return Observation('database.sqlite_freelist',Status.OK,f'Freelist: {len(trunk_pages)} trunk + {len(leaf_pages)} leaf page(s)',facts=facts,meta={'source_sha256':sha256_file(path)})
+
+@registry.tool(name='database.sqlite_deleted_records',description='Carve deleted/candidate records from SQLite unallocated page space, freeblocks and freelist pages. Classifies each as DELETED_CANDIDATE (column count matches the live schema) or CARVED (record-shaped but unmatched).',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','recovery'),produces=('deleted_records'),
+ parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'limit_per_table':{'type':'integer','default':200}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
+def sqlite_deleted_records(path:str,max_bytes:int=256*1024*1024,limit_per_table:int=200)->Observation:
+    try: data=_load_bytes(path,max_bytes)
+    except (OSError,ValueError) as e: return Observation('database.sqlite_deleted_records',Status.ERROR,'Cannot read SQLite evidence',errors=[str(e)])
+    try: hdr=parse_sqlite_header(data)
+    except ValueError as e: return Observation('database.sqlite_deleted_records',Status.UNSUPPORTED,'Not a SQLite database',errors=[str(e)],meta={'source_sha256':sha256_file(path)})
+    page_size=hdr['page_size']; reserved=hdr['reserved_bytes_per_page']; enc=hdr['text_encoding']
+    num_pages=len(data)//page_size
+    pages={pn:data[(pn-1)*page_size:pn*page_size] for pn in range(1,num_pages+1)}
+    schema=parse_schema(pages,page_size,reserved,enc)
+    recovered=recover_deleted(pages,schema,page_size,reserved,enc,limit_per_table)
+    total=sum(len(r['recovered']) for r in recovered)
+    candidates=sum(1 for r in recovered for c in r['recovered'] if c['state']=='DELETED_CANDIDATE')
+    ev=[Evidence(str(path),'sqlite_deleted_record',c['columns'],locator=f"table:{r['table']};page:{c['page']};offset:{c['offset']}",state=c['state'],method='byte carving (no sqlite3)') for r in recovered for c in r['recovered'][:200]]
+    return Observation('database.sqlite_deleted_records',Status.PARTIAL if total else Status.OK,f'Recovered {total} deleted/carved record(s) ({candidates} candidate(s))',facts={'tables':len(schema),'per_table':[{'table':r['table'],'live_rows':r['live_rows'],'recovered':len(r['recovered'])} for r in recovered],'samples':[{'table':r['table'],'records':r['recovered'][:20]} for r in recovered]},evidence=ev,warnings=['Carved records are heuristic; not all are genuine deleted rows.'],meta={'source_sha256':sha256_file(path)})
+
+@registry.tool(name='database.sqlite_recover',description='Reconstruct the logical current database by overlaying valid WAL frames onto DB pages, then recover live + deleted records across all tables. The deepest SQLite recovery path.',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','recovery','wal'),produces=('recovered_records'),
+ parameters={'type':'object','properties':{'path':{'type':'string'},'wal_path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'limit_per_table':{'type':'integer','default':200}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
+def sqlite_recover(path:str,wal_path:str='',max_bytes:int=256*1024*1024,limit_per_table:int=200)->Observation:
+    try: data=_load_bytes(path,max_bytes)
+    except (OSError,ValueError) as e: return Observation('database.sqlite_recover',Status.ERROR,'Cannot read SQLite evidence',errors=[str(e)])
+    try: hdr=parse_sqlite_header(data)
+    except ValueError as e: return Observation('database.sqlite_recover',Status.UNSUPPORTED,'Not a SQLite database',errors=[str(e)],meta={'source_sha256':sha256_file(path)})
+    page_size=hdr['page_size']; reserved=hdr['reserved_bytes_per_page']; enc=hdr['text_encoding']
+    wal_bytes=None
+    if wal_path:
+        wp=Path(wal_path)
+        if wp.is_file(): wal_bytes=wp.read_bytes()
+    elif Path(path+'-wal').is_file():
+        wal_bytes=Path(path+'-wal').read_bytes()
+    pages=reconstruct_logical_pages(data,wal_bytes,page_size)
+    schema=parse_schema(pages,page_size,reserved,enc)
+    recovered=recover_deleted(pages,schema,page_size,reserved,enc,limit_per_table)
+    live_total=sum(r['live_rows'] for r in recovered)
+    del_total=sum(len(r['recovered']) for r in recovered)
+    facts={'wal_applied':wal_bytes is not None,'tables':[{'table':r['table'],'live_rows':r['live_rows'],'recovered':len(r['recovered'])} for r in recovered],
+           'live_total':live_total,'recovered_total':del_total,
+           'samples':[{'table':r['table'],'records':r['recovered'][:20]} for r in recovered]}
+    ev=[Evidence(str(path),'sqlite_recovered',c['columns'],locator=f"table:{r['table']};page:{c['page']};offset:{c['offset']}",state=c['state'],method='WAL overlay + carving') for r in recovered for c in r['recovered'][:200]]
+    return Observation('database.sqlite_recover',Status.PARTIAL if del_total else Status.OK,f'Recovered: {live_total} live + {del_total} deleted/carved record(s)',facts=facts,evidence=ev,warnings=['Carved records are heuristic.'],meta={'source_sha256':sha256_file(path),'wal_sha256':sha256_file(Path(wal_path)) if wal_path and Path(wal_path).is_file() else ''})

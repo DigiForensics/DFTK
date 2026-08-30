@@ -17,11 +17,14 @@ from dftk.primitives.e01 import e01_filesystem_inventory
 from dftk.core.models import Status
 
 
-def test_windows_registry_dependency_is_explicit(tmp_path):
+def test_windows_registry_is_native_no_hard_dependency(tmp_path):
+    # registry_inventory now falls back to DFTK's pure-Python parser, so a
+    # hive-shaped-but-invalid file must NOT report UNSUPPORTED (no missing dep).
     p=tmp_path/'SYSTEM'; p.write_bytes(b'regf'+b'\0'*4096)
     obs=registry_inventory(str(p))
-    assert obs.status in (Status.UNSUPPORTED,Status.ERROR)
-    if obs.status==Status.UNSUPPORTED: assert any('python-registry' in e for e in obs.errors)
+    assert obs.status != Status.UNSUPPORTED
+    # junk (no hbin block) is rejected as an invalid hive, not silently OK.
+    assert obs.status == Status.ERROR
 
 
 def test_evtx_dependency_is_explicit(tmp_path):

@@ -1,6 +1,6 @@
-# Capability map — DFTK 3.3.0
+# Capability map — DFTK 3.5.0
 
-The registry contains 72 tools (71 READ_ONLY, 1 STATEFUL). Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
+The registry contains 99 tools (95 READ_ONLY, 4 STATEFUL) — primitives plus recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
 
 ## Artifact and filesystem
 
@@ -30,6 +30,8 @@ The registry contains 72 tools (71 READ_ONLY, 1 STATEFUL). Most capabilities are
 - ELF architecture/section inventory.
 - PE/COFF architecture, timestamp and section inventory.
 - bounded JNI/crypto/network/command indicator string scan; explicitly heuristic.
+- **Deep PE** (3.5.0): `binary.pe_headers` (DOS/COFF/optional header, data directories, section summary, rich-header presence), `binary.pe_imports` (DLL + imported symbols by name/ordinal, Mandiant-compatible imphash), `binary.pe_exports` (exported symbols + forwarders), `binary.pe_resources` (resource tree walk + embedded manifest extraction), `binary.pe_rich_header` (compiler/toolchain prodid/version/count), `binary.pe_signing` (Authenticode WIN_CERTIFICATE / PKCS#7 with X.509 issuer/subject/validity decoded without external crypto libs; absence of a signature is reported, not assumed malicious).
+- **Deep ELF** (3.5.0): `binary.elf_dynamic` (NEEDED libraries, interpreter, RPATH/RUNPATH, GNU build-id, and the dynamic symbol table resolved from `.dynsym`/`.dynstr`).
 
 ## Crypto and encoding
 
@@ -62,14 +64,51 @@ The registry contains 72 tools (71 READ_ONLY, 1 STATEFUL). Most capabilities are
 - DNS question extraction.
 - HTTP/1 request method/target/Host extraction.
 - best-effort TLS ClientHello SNI extraction when the ClientHello is available in a single parsed TCP payload.
+- `network.flows` — group packets into TCP conversations and UDP 5-tuples with counts/timestamps/flag summary.
+- `network.tcp_reassemble` — reassemble each TCP stream direction by sequence (retrans/out-of-order/overlap handled), SHA-256 + bounded hex preview. READ_ONLY.
+- `network.http_sessions` — correlate HTTP request/response pairs and extract file-like response bodies to the workspace as DerivedArtifacts. STATEFUL.
+- `network.dns_transactions` — correlate DNS query/response by transaction id + name, resolving A/AAAA/CNAME.
+- `network.tls_inventory` — SNI / ALPN / versions / cipher suites / extensions / JA3 from TLS ClientHello.
 
 ## Windows
 
+Native, dependency-free Windows host-artifact tools (pure-Python, work on student machines):
+
+- `windows.mft` — NTFS `$MFT` path rebuild, SI/FN timestamps, flags, size.
+- `windows.prefetch` — `.pf` (v17/23/26/30) executable, hash, run count, last run, referenced files.
+- `windows.lnk` — Shell Link target, timestamps, TrackerDataBlock machine/MAC.
+- `windows.recyclebin` — Recycle Bin `$I` original name, size, deletion time, paired `$R`.
+- `windows.usnjrnl` — `$UsnJrnl:$J` change journal (V2/V3): FRN, parent FRN, reasons, source info, attributes; optional `$MFT` FRN→path resolution. Reports file-system activity factually — does **not** infer execution.
+
 Optional `python-registry` / `python-evtx` capabilities:
 
-- Registry hive inventory.
+- Registry hive inventory (pure-Python fallback when `python-registry` is absent).
+- Pure-Python live key tree (`windows.registry_tree`) and deleted/unreachable key recovery (`windows.registry_deleted_keys`).
 - SYSTEM hive CurrentControlSet USBSTOR and MountedDevices recovery.
 - EVTX provider, EventID and timestamp summaries.
+
+Program / execution-context artifacts (3.5.0):
+
+- `windows.amcache` — `Amcache.hve` parsed with the pure-Python REGF reader: file records (path, SHA1, size, version, last-modified, linked ProgramId) and `InventoryApplication` program metadata.
+- `windows.shimcache` — AppCompatCache entries (path + last-modified). Execution is **not** inferred: every entry carries `execution_inference = "unsupported"`; correlate with Prefetch / Amcache / `$MFT` / USN instead.
+- `windows.srum` — `SRUDB.dat` (ESE) usage tables via the `esedb` adapter; returns `UNSUPPORTED` when the optional ESE reader is absent.
+
+## Memory forensics
+
+DFTK does not re-implement a memory engine. `memory.*` is a **fixed-capability
+adapter** over Volatility 3 — six tools, one plugin each, no arbitrary arguments
+(the same philosophy as `server.remote_snapshot`):
+
+- `memory.volatility_inventory` (`windows.info`) — system overview.
+- `memory.processes` (`windows.pslist`) — process list.
+- `memory.network` (`windows.netscan`) — network connections.
+- `memory.malfind` (`windows.malfind`) — injected / anomalous memory regions.
+- `memory.modules` (`windows.modules`) — kernel modules.
+- `memory.handles` (`windows.handles`) — open handles.
+
+Every run is bounded by a timeout and row limit, treats the dump as read-only
+evidence, and normalises output into an `Observation` carrying the source hash.
+When Volatility is absent the tools return `UNSUPPORTED` instead of failing.
 
 ## Disk images
 
@@ -113,3 +152,21 @@ Optional forensic-environment capabilities:
 - `recipe.email.full_offline_triage`
 - `recipe.wallet.mnemonic_scan`
 - `recipe.timeline.unified` — build a unified, source-attributed timeline from a filesystem tree plus optional extra dftk Observation sources.
+
+## Reporting, verification and application profiles
+
+- `case.report_html` (STATEFUL) — self-contained HTML forensic report: case summary,
+  evidence sources, observations, recovered artifacts, timeline, entities,
+  warnings/limitations, chain of custody and tool manifest. Every rendered value is
+  escaped; the report is registered as a DerivedArtifact. HTML first — PDF can be
+  layered on without changing the report model.
+- `case.verify` — replays an audit ledger and reports `VALID` or `BROKEN` with the
+  failing record number and reason; re-derives each record's result and evidence
+  digests, and cross-checks supplied observations / manifest.
+- Application Profile architecture (`dftk/profiles/`) — a declarative
+  `ArtifactProfile` describing detection conditions, database location, table/field
+  mapping, time format, encoding and attachment relations. `application.profile_list`
+  enumerates profiles; `application.profile_apply` detects or applies one and
+  normalises rows (databases opened read-only). An unmatched schema is reported, not
+  guessed. Ships one validated demo profile (generic Android messaging); vendor IM
+  parsers become profile *data* in 3.6 rather than bespoke parser code.
