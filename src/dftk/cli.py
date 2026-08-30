@@ -49,11 +49,37 @@ AGENT_SKILL_DIRS = {
 }
 
 
-def _load_params(args):
+def _primary_input_param(reg, name):
+    """Best-effort resolve the tool's primary input parameter name so a
+    positional path can be mapped without requiring a JSON blob."""
+    try:
+        spec = reg.get(name)
+    except KeyError:
+        return None
+    params = spec.parameters or {}
+    props = params.get("properties", {}) or {}
+    if "path" in props:
+        return "path"
+    if "evidence" in props:
+        return "evidence"
+    required = params.get("required") or []
+    if required:
+        return required[0]
+    if props:
+        return next(iter(props))
+    return None
+
+
+def _load_params(args, reg=None):
     if getattr(args, "params_file", None):
         return json.loads(Path(args.params_file).read_text(encoding="utf-8"))
     if getattr(args, "params", None):
         return json.loads(args.params)
+    target = getattr(args, "target", None)
+    if target and reg is not None:
+        key = _primary_input_param(reg, getattr(args, "name", None))
+        if key:
+            return {key: target}
     return {}
 
 
@@ -278,15 +304,19 @@ def main(argv=None):
     ls = sub.add_parser("list", help="list registered tools")
     ls.add_argument("--tag", action="append")
     ls.add_argument("--produces")
+    ls.add_argument("--group", action="store_true", help="group tools by primary tag instead of dumping all specs")
 
     describe = sub.add_parser("describe")
     describe.add_argument("name")
 
     run = sub.add_parser("run")
     run.add_argument("name")
+    run.add_argument("target", nargs="?", help="positional input path; auto-maps to the tool's primary input parameter (usually 'path')")
     run.add_argument("--params")
     run.add_argument("--params-file")
     run.add_argument("--out")
+    run.add_argument("--report", nargs="?", const="./dftk_report", metavar="DIR",
+                     help="also write a self-contained HTML forensic report into DIR (default: ./dftk_report)")
     run.add_argument("--allow-network", action="store_true")
     run.add_argument(
         "--max-safety",
@@ -400,7 +430,15 @@ def main(argv=None):
     if args.cmd == "mcp":
         return _cmd_mcp(args)
     if args.cmd == "list":
-        _emit([_spec_dict(spec) for spec in registry.find(tags=args.tag, produces=args.produces)])
+        specs = registry.find(tags=args.tag, produces=args.produces)
+        if getattr(args, "group", False):
+            groups = {}
+            for s in specs:
+                tag = (s.tags[0] if s.tags else "uncategorized")
+                groups.setdefault(tag, []).append(s.name)
+            _emit({"groups": groups})
+        else:
+            _emit([_spec_dict(spec) for spec in specs])
         return 0
     if args.cmd == "describe":
         try:
@@ -419,7 +457,7 @@ def main(argv=None):
         return 0
 
     try:
-        params = _load_params(args)
+        params = _load_params(args, registry)
     except Exception as exc:
         _emit({"error": f"invalid params JSON: {exc}"})
         return 2
@@ -436,8 +474,35 @@ def main(argv=None):
     )
     audit = ToolAuditLog(args.audit) if args.audit else None
     obs = registry.run(args.name, params, policy, audit=audit, caller="cli")
+    if getattr(args, "report", None):
+        _emit_report(obs, args.report, policy, audit)
     _emit(obs.to_dict(), args.out)
     return 0 if obs.status.value in ("ok", "partial", "unsupported") else 1
+
+
+def _emit_report(obs, report_dir, policy, audit):
+    """Render a self-contained HTML forensic report for a single Observation.
+
+    Report generation writes to a user-named output directory, so it runs
+    under a STATEFUL ceiling (a deliberate workspace write, not destructive).
+    """
+    report_dir = report_dir or "./dftk_report"
+    report_policy = SafetyPolicy(
+        max_level=SafetyLevel.STATEFUL,
+        allow_network=policy.allow_network,
+    )
+    rob = registry.run(
+        "case.report_html",
+        {"output_dir": report_dir, "observations": [obs.to_dict()]},
+        report_policy,
+        audit=audit,
+        caller="cli",
+    )
+    target = Path(report_dir) / "dftk_report.html"
+    if rob.status.value in ("ok", "partial"):
+        print(f"Report written to: {target}")
+    else:
+        print(f"Report generation failed: {rob.errors}")
 
 
 if __name__ == "__main__":
