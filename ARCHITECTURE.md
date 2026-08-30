@@ -67,8 +67,8 @@ The ledger sits strictly outside the evidence contract. It records provenance *a
 
 The default policy allows only `READ_ONLY` and disallows network traffic. Currently:
 
-- 71 tools are `READ_ONLY` (72 registered in total);
-- `archive.extract_safe` is `STATEFUL` because it writes a derived workspace while leaving the source archive unchanged;
+- 109 tools are `READ_ONLY` (113 registered in total);
+- four tools are `STATEFUL` because they write derived workspace output while leaving the source evidence unchanged: `archive.extract_safe`, `filesystem.extract`, `network.http_sessions` and `case.report_html`;
 - no registered tool is `DESTRUCTIVE`;
 - network-capable tools are separately gated.
 

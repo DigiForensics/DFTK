@@ -298,7 +298,7 @@ Phase 7 — Windows depth, memory adapter, reporting and profile architecture:
   degradation. Note `python-evtx` is not installed in this environment, so the EVTX
   test injects a fake `Evtx` module; a real-evtx file remains the gold-standard follow-up.
 
-Registry surface is now 99 tools (95 READ_ONLY, 4 STATEFUL); full suite 207 passed.
+Registry surface is now 113 tools (109 READ_ONLY, 4 STATEFUL) — 99 primitives plus 14 recipes; full suite 232 passed.
 
 ## 3.3.0 — Chain-of-custody audit ledger & robustness (2026-08-16)
 
