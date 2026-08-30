@@ -83,6 +83,25 @@ def test_derived_artifacts_registered(tmp_path):
     assert out.evidence[0].artifact_id == art.artifact_id
 
 
+def test_search_box_present(tmp_path):
+    obs = _sample_observation()
+    out = report_html(str(tmp_path), [obs.to_dict()])
+    html = Path(out.facts["report_path"]).read_text(encoding="utf-8")
+    assert 'id="dfsearch"' in html
+
+
+def test_entity_graph_rendered_with_multiple_entities(tmp_path):
+    obs = Observation("demo.e", Status.OK, "x", facts={}, evidence=[
+        Evidence("/e/a", "ip", "1.2.3.4"),
+        Evidence("/e/b", "domain", "evil.com"),
+        Evidence("/e/c", "url", "https://evil.com/x"),
+    ])
+    out = report_html(str(tmp_path), [obs.to_dict(), obs.to_dict()], case_id="G")
+    html = Path(out.facts["report_path"]).read_text(encoding="utf-8")
+    assert "entgraph" in html
+    assert "<svg" in html
+
+
 def test_xss_is_escaped(tmp_path):
     evil = Observation("demo.xss", Status.OK, "<script>alert(1)</script>",
                        facts={"k": "<img src=x onerror=alert(1)>"},

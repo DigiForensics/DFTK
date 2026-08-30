@@ -36,6 +36,7 @@ import hashlib
 import html
 import re
 from datetime import datetime, timezone
+from itertools import combinations
 from pathlib import Path
 
 from dftk import __version__ as DFTK_VERSION
@@ -66,6 +67,9 @@ summary{cursor:pointer;padding:8px 16px;font-weight:600}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
 .muted{color:var(--muted)}.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
 .small{font-size:12px}
+.searchbar{position:sticky;top:0;z-index:5;background:var(--panel);padding:10px 16px;border-bottom:1px solid var(--line)}
+.searchbar input{width:100%;max-width:560px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#0c0f14;color:var(--fg);font-size:13px}
+.entgraph{margin-top:10px;border:1px solid var(--line);border-radius:8px;background:#0c0f14}
 """
 
 
@@ -102,6 +106,56 @@ def _collect_timeline(observations: list[dict], limit: int) -> list[dict]:
     return out[:limit]
 
 
+def _build_entity_graph(entities: dict[str, int], edges: dict[tuple[str, str], int],
+                        limit: int = 36, max_edges: int = 60) -> str:
+    """Render entity co-occurrence as a self-contained inline SVG (no JS deps).
+
+    A node is an entity (kind: value); an edge links two entities that appear
+    in the same observation. Node radius is proportional to occurrence count;
+    edge width to co-occurrence count. Returns "" when there is nothing to draw.
+    """
+    import math
+
+    if len(entities) < 2:
+        return ""
+    top = sorted(entities.items(), key=lambda kv: -kv[1])[:limit]
+    node_set = {k for k, _ in top}
+    cx, cy, R = 360, 260, 200
+    pos: dict[str, tuple[float, float]] = {}
+    n = len(top)
+    for i, (k, _) in enumerate(top):
+        ang = 2 * math.pi * i / n - math.pi / 2
+        pos[k] = (cx + R * math.cos(ang), cy + R * math.sin(ang))
+    maxc = top[0][1] or 1
+    nodes_svg: list[str] = []
+    for k, c in top:
+        x, y = pos[k]
+        r = 5 + 9 * math.sqrt(c / maxc)
+        nodes_svg.append(
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="var(--accent)" '
+            f'opacity="0.85" title="{_e(k)} (count {c})"></circle>'
+        )
+        nodes_svg.append(
+            f'<text x="{x:.1f}" y="{y - r - 4:.1f}" fill="var(--muted)" font-size="9" '
+            f'text-anchor="middle">{_e(_short(k, 22))}</text>'
+        )
+    edge_list = [(a, b, w) for (a, b), w in edges.items() if a in node_set and b in node_set]
+    edge_list.sort(key=lambda t: -t[2])
+    edges_svg: list[str] = []
+    for a, b, w in edge_list[:max_edges]:
+        x1, y1 = pos[a]
+        x2, y2 = pos[b]
+        edges_svg.append(
+            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+            f'stroke="var(--line)" stroke-width="{min(2.5, 0.5 + 0.5 * w):.2f}" opacity="0.6"></line>'
+        )
+    return (
+        f'<svg class="entgraph" viewBox="0 0 720 520" width="100%" role="img" '
+        f'aria-label="entity co-occurrence graph">'
+        + "".join(edges_svg) + "".join(nodes_svg) + "</svg>"
+    )
+
+
 def _render_report(
     *,
     case_id: str,
@@ -118,12 +172,14 @@ def _render_report(
     tools: dict[str, int] = {}
     derived: list[dict] = []
     statuses: dict[str, int] = {}
+    obs_entity_keys: list[set] = []
 
     for obs in observations:
         tool = obs.get("tool", "?")
         tools[tool] = tools.get(tool, 0) + 1
         st = obs.get("status", "?")
         statuses[st] = statuses.get(st, 0) + 1
+        cur: set[str] = set()
         for ev in obs.get("evidence", []) or []:
             if not isinstance(ev, dict):
                 continue
@@ -135,7 +191,10 @@ def _render_report(
                 sources[src]["tools"].add(tool)
             val = _short(ev.get("value", ""), 200)
             if val:
-                entities[f"{ev.get('kind','')}: {val}"] = entities.get(f"{ev.get('kind','')}: {val}", 0) + 1
+                key = f"{ev.get('kind','')}: {val}"
+                entities[key] = entities.get(key, 0) + 1
+                cur.add(key)
+        obs_entity_keys.append(cur)
         for d in obs.get("derived_artifacts", []) or []:
             if isinstance(d, dict):
                 derived.append(d)
@@ -145,6 +204,11 @@ def _render_report(
             errors.append((tool, str(er)))
 
     timeline = _collect_timeline(observations, timeline_limit)
+
+    edges: dict[tuple[str, str], int] = {}
+    for keyset in obs_entity_keys:
+        for a, b in combinations(sorted(keyset), 2):
+            edges[(a, b)] = edges.get((a, b), 0) + 1
 
     def _status_cls(s: str) -> str:
         return "ok" if s == "ok" else ("bad" if s in ("error", "blocked") else "warn")
@@ -158,6 +222,9 @@ def _render_report(
     parts.append(f"<div class=\"meta\">case: {_e(case_id or '—')} · generated: {_e(now)} · "
                  f"DFTK {_e(DFTK_VERSION)} · {len(observations)} observation(s)</div>")
     parts.append("</header><main>")
+    parts.append('<div class="searchbar"><input id="dfsearch" type="search" '
+                 'placeholder="Filter report… (try a tool, entity, date or hash)" '
+                 'aria-label="filter report"></div>')
 
     # Case Summary
     parts.append("<section><h2>Case Summary</h2><div class=\"body\"><table>")
@@ -239,6 +306,11 @@ def _render_report(
         for ent, n in sorted(entities.items(), key=lambda kv: -kv[1])[:500]:
             parts.append(f"<tr><td class=\"small\">{_e(_short(ent, 220))}</td><td>{n}</td></tr>")
         parts.append("</table>")
+        graph = _build_entity_graph(entities, edges)
+        if graph:
+            parts.append("<p class=\"muted small\">Co-occurrence graph — a node is an entity, an edge links two "
+                         "entities that appear in the same observation (edge weight = co-occurrence count).</p>")
+            parts.append(graph)
     else:
         parts.append("<p class=\"muted\">No entities extracted.</p>")
     parts.append("</div></section>")
@@ -280,6 +352,15 @@ def _render_report(
         parts.append(f"<tr><td class=\"mono\">{_e(t)}</td><td>{n}</td></tr>")
     parts.append("</table></div></section>")
 
+    parts.append('<script>'
+                 '(function(){var f=document.getElementById("dfsearch");if(!f)return;'
+                 'f.addEventListener("input",function(){'
+                 'var q=(f.value||"").toLowerCase();'
+                 'var secs=document.querySelectorAll("main > section");'
+                 'secs.forEach(function(s){'
+                 's.style.display=(!q||s.textContent.toLowerCase().indexOf(q)>=0)?"":"none";});'
+                 '});})();'
+                 '</script>')
     parts.append("</main></body></html>")
     return "".join(parts)
 
