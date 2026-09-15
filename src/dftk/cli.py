@@ -25,6 +25,7 @@ from .core.models import SafetyLevel
 from .core.registry import registry
 from .core.safety import SafetyPolicy
 from .core.audit import ToolAuditLog
+from .core.case import FINDING_STATUSES
 from .skill_bundle import (
     SKILL_REPO_WEB,
     fetch_skill_repo,
@@ -304,7 +305,7 @@ def _cmd_agent(args):
 
 
 def _cmd_case(args):
-    from .core.case import CaseError, CaseSession
+    from .core.case import CaseError, CaseSession, FINDING_STATUSES
 
     session = CaseSession(getattr(args, "workspace", None))
     cmd = getattr(args, "case_cmd", None)
@@ -389,7 +390,82 @@ def _cmd_case(args):
         else:
             print(text)
         return 0
+    if cmd == "finding":
+        try:
+            citations = json.loads(args.citations)
+        except json.JSONDecodeError as exc:
+            _emit({"error": f"invalid citations JSON: {exc}"})
+            return 2
+        try:
+            finding = session.add_finding(
+                args.case_id,
+                args.claim,
+                args.status,
+                citations,
+                need_verify=args.need_verify,
+                analyst=args.analyst,
+            )
+        except CaseError as exc:
+            _emit({"error": str(exc)})
+            return 2
+        _emit(finding)
+        return 0
+    if cmd == "findings":
+        try:
+            _emit(session.findings_report(args.case_id))
+        except CaseError as exc:
+            _emit({"error": str(exc)})
+            return 2
+        return 0
+    if cmd == "answers":
+        try:
+            payload = session.answers(args.case_id, out=args.out)
+        except CaseError as exc:
+            _emit({"error": str(exc)})
+            return 2
+        if args.out:
+            print(f"answers -> {args.out}")
+        else:
+            _emit(payload)
+        return 0
     _emit({"error": "unknown case subcommand"})
+    return 2
+
+
+def _cmd_audit(args) -> int:
+    """Verify or seal a chain-of-custody ledger.
+
+    Exit codes are chosen for automation: 0 means the ledger is fully
+    verifiable, 1 means a defect was found (edited/deleted/reordered record, or
+    a seal mismatch), 2 means the ledger could not be read at all.
+    """
+    from .core.audit import seal_ledger, verify_ledger
+
+    target = args.path or os.environ.get("DFTK_AUDIT_LOG")
+    if not target:
+        _emit({"error": "no ledger given: pass PATH or set DFTK_AUDIT_LOG"})
+        return 2
+    cmd = getattr(args, "audit_cmd", None)
+    try:
+        if cmd == "verify":
+            report = verify_ledger(target, seal=args.seal)
+            _emit(report, args.out, force=args.force)
+            if report["ok"]:
+                return 0
+            return 2 if report["verdict"] == "unreadable" else 1
+        if cmd == "seal":
+            report = seal_ledger(target)
+            verdict = report["verdict_at_seal"]
+            if verdict in ("defective", "unreadable"):
+                _emit({"error": f"refusing to seal a {verdict} ledger", "ledger": report["ledger"],
+                       "defects": report["defects_at_seal"]})
+                return 2 if verdict == "unreadable" else 1
+            _emit(report, args.out or f"{target}.seal.json", force=args.force)
+            return 0
+    except OSError as exc:
+        _emit({"error": f"{type(exc).__name__}: {exc}"})
+        return 2
+    _emit({"error": "unknown audit subcommand"})
     return 2
 
 
@@ -627,6 +703,45 @@ def main(argv=None):
     case_export.add_argument("--format", choices=["json", "md"], default="json")
     case_export.add_argument("--out")
     case_export.add_argument("--force", action="store_true", help="allow --out to replace an existing file")
+    case_finding = case_sub.add_parser("finding", help="register a conclusion tied to persisted Case evidence (requires citations)")
+    case_finding.add_argument("case_id")
+    case_finding.add_argument("--claim", required=True, help="the conclusion statement")
+    case_finding.add_argument(
+        "--status",
+        required=True,
+        choices=list(FINDING_STATUSES),
+        help="conclusion state (VERIFIED/SUPPORTED/CANDIDATE/UNRESOLVED/UNSUPPORTED)",
+    )
+    case_finding.add_argument(
+        "--citations",
+        required=True,
+        help='JSON list of {"run_seq":N,"evidence_index":M} pointing at persisted Case runs',
+    )
+    case_finding.add_argument("--need-verify", default="", help="what is still required to upgrade the status")
+    case_finding.add_argument("--analyst", default="", help="who/what recorded this finding")
+    case_findings = case_sub.add_parser("findings", help="list registered conclusions with citation state")
+    case_findings.add_argument("case_id")
+    case_answers = case_sub.add_parser("answers", help="emit answer_slots.json-shaped conclusions for the skill scorer")
+    case_answers.add_argument("case_id")
+    case_answers.add_argument("--out", metavar="PATH", help="write answers/answer_slots.json to this path")
+
+    audit = sub.add_parser("audit", help="verify or seal a chain-of-custody audit ledger")
+    audit_sub = audit.add_subparsers(dest="audit_cmd", required=True)
+    audit_verify = audit_sub.add_parser(
+        "verify",
+        help="recompute the ledger hash chain (exit 0 intact, 1 defect, 2 unreadable)",
+    )
+    audit_verify.add_argument("path", nargs="?", metavar="PATH", help="ledger to verify (default: $DFTK_AUDIT_LOG)")
+    audit_verify.add_argument("--seal", metavar="PATH", help="also compare the ledger against a seal written by 'dftk audit seal'")
+    audit_verify.add_argument("--out")
+    audit_verify.add_argument("--force", action="store_true", help="allow --out to replace an existing file")
+    audit_seal = audit_sub.add_parser(
+        "seal",
+        help="write a seal (count + last hash + file digest) so later edits or truncation are detectable",
+    )
+    audit_seal.add_argument("path", nargs="?", metavar="PATH", help="ledger to seal (default: $DFTK_AUDIT_LOG)")
+    audit_seal.add_argument("--out", metavar="PATH", help="seal output path (default: <ledger>.seal.json)")
+    audit_seal.add_argument("--force", action="store_true", help="allow --out to replace an existing file")
 
     mcp = sub.add_parser("mcp", help="run the native local DFTK MCP server over stdio")
     mcp.add_argument("--root", default=".", metavar="DIR", help="filesystem evidence root visible to DFTK MCP (default: current directory)")
@@ -648,6 +763,8 @@ def main(argv=None):
         return _cmd_agent(args)
     if args.cmd == "case":
         return _cmd_case(args)
+    if args.cmd == "audit":
+        return _cmd_audit(args)
     if args.cmd == "doctor":
         return _cmd_doctor(args)
     if args.cmd == "prepare":

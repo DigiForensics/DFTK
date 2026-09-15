@@ -1,6 +1,6 @@
 # Capability map — DFTK 3.4.0
 
-The registry contains 79 tools: 78 `READ_ONLY` and 1 `STATEFUL`. The registry is
+The registry contains 80 tools: 79 `READ_ONLY` and 1 `STATEFUL`. The registry is
 the source of truth for capability metadata; `scripts/check_docs.py` verifies this
 summary against the loaded runtime.
 
@@ -112,6 +112,12 @@ Optional forensic-environment capabilities:
 - `dftk case graph <case_id>` / MCP `dftk_case(action="graph")` — derive the same entity graph directly from persisted Case Observations.
 - `recipe.timeline.unified` — compose a filesystem metadata timeline (and optional extra sources) into one unified timeline.
 - `dftk case` CLI — accumulate read-only tool runs in an isolated workspace (`.dftk/cases/<id>/`) and correlate them: `case new`, `case list`, `case run`, `case timeline`, `case export` (JSON or Markdown). The session only writes under its explicit workspace and never touches source evidence.
+
+## Chain of custody
+
+- `custody.ledger_verify` — recompute the audit ledger's per-record SHA-256 hash chain and report records that were edited, deleted, reordered, truncated or downgraded; optionally compare the ledger against a seal. Read-only. A status of `ok` means the verification ran; read `facts.verdict` for the result.
+- `dftk audit verify <ledger.jsonl> [--seal seal.json]` — the same check from the CLI. Exit 0 intact, 1 defective, 2 unreadable.
+- `dftk audit seal <ledger.jsonl>` — write an external anchor (record count, last record hash, whole-file SHA-256) so deletion from the *end* of a ledger is detectable; a defective ledger refuses to seal.
 
 ## Recipes
 

@@ -160,3 +160,52 @@ def test_mcp_worker_logs_audit(tmp_path: Path):
     assert res["ok"] is True
     recs = _read_records(audit_path)
     assert any(r["tool"] == "file.strings" and r["caller"] == "mcp" for r in recs)
+
+
+def test_audit_log_tracks_dropped_writes(tmp_path: Path):
+    import dftk.core.audit as audit_mod
+    from dftk.core.models import Observation, Status, SafetyLevel
+
+    # Point the ledger at an existing directory: opening it for append raises
+    # OSError (IsADirectoryError / PermissionError), which record() must swallow
+    # without disrupting the forensic run, but must record as a dropped write.
+    log = ToolAuditLog(tmp_path)  # tmp_path is a directory, not a file
+    reg = ToolRegistry()
+
+    @reg.tool(name="demo.drop", description="d", safety=SafetyLevel.READ_ONLY,
+              parameters={"type": "object", "properties": {}})
+    def drop() -> Observation:
+        return Observation("demo.drop", Status.OK, "did thing")
+
+    out = reg.run("demo.drop", {}, audit=log, caller="test")
+    # The tool run itself must still succeed despite the failing ledger.
+    assert out.status.value == "ok"
+    # The failure is observable instead of silent.
+    assert log.dropped == 1
+    assert log.last_error is not None
+    health = log.health()
+    assert health["ok"] is False
+    assert health["dropped"] == 1
+    assert health["path"] == str(tmp_path)
+
+
+def test_audit_health_ok_with_writable_log(tmp_path: Path):
+    log = ToolAuditLog(tmp_path / "audit.jsonl")
+    assert log.health()["ok"] is True
+    assert log.dropped == 0
+
+
+def test_default_audit_log_surfaces_construction_error(tmp_path: Path, monkeypatch):
+    import dftk.core.audit as audit_mod
+
+    # A path whose parent is an existing *file* cannot be created -> construction fails.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("i am a file")
+    monkeypatch.setenv("DFTK_AUDIT_LOG", str(blocker / "audit.jsonl"))
+    monkeypatch.setattr(audit_mod, "_DEFAULT_AUDIT_LOG_RESOLVED", False)
+    monkeypatch.setattr(audit_mod, "_DEFAULT_AUDIT_LOG", None)
+    monkeypatch.setattr(audit_mod, "_DEFAULT_AUDIT_LOG_ERROR", None)
+
+    log = _get_default_audit_log()
+    assert log is None
+    assert audit_mod._DEFAULT_AUDIT_LOG_ERROR is not None

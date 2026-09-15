@@ -216,6 +216,34 @@ def doctor_report() -> dict[str, Any]:
             "remediation": f"dftk skill --install --target {target}",
         })
 
+    # Always-on chain-of-custody ledger: if DFTK_AUDIT_LOG is configured but the
+    # ledger cannot be opened, or it has started dropping records, the audit trail
+    # is silently incomplete. Surface that before the analyst trusts a missing log.
+    audit_env = os.environ.get("DFTK_AUDIT_LOG")
+    if audit_env:
+        from .core.audit import _DEFAULT_AUDIT_LOG_ERROR, _get_default_audit_log
+
+        audit_log = _get_default_audit_log()
+        if audit_log is None:
+            detail = _DEFAULT_AUDIT_LOG_ERROR or (
+                f"always-on audit ledger at {audit_env!r} could not be opened"
+            )
+            warnings.append({
+                "code": "audit-ledger-unavailable",
+                "detail": detail,
+                "remediation": "point DFTK_AUDIT_LOG at a writable path,"
+                " or unset it to disable the always-on ledger",
+            })
+        elif audit_log.dropped:
+            warnings.append({
+                "code": "audit-ledger-dropping",
+                "detail": (
+                    f"audit ledger at {audit_log.path!r} dropped "
+                    f"{audit_log.dropped} record(s): {audit_log.last_error}"
+                ),
+                "remediation": "check disk space and ledger path permissions",
+            })
+
     ok = bool(specs) and (not mcp_installed or mcp_ready)
     return {
         "ok": ok,

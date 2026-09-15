@@ -19,8 +19,10 @@ import dftk
 
 def test_public_registry_and_run_tool(tmp_path):
     reg=dftk.get_registry()
-    assert len(reg.specs()) == 79
+    names={spec.name for spec in reg.specs()}
+    assert {'artifact.inspect','custody.ledger_verify'} <= names
     assert reg.get('artifact.inspect').safety.name == 'READ_ONLY'
+    assert reg.get('custody.ledger_verify').safety.name == 'READ_ONLY'
 
     db=tmp_path/'public-api.db'
     con=sqlite3.connect(db)

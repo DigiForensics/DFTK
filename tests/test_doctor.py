@@ -109,3 +109,31 @@ def test_skill_misplaced_warning_in_report(tmp_path, monkeypatch):
     report = doctor.doctor_report()
     codes = [w["code"] for w in report["warnings"]]
     assert "skill-misplaced" in codes
+
+
+def test_doctor_warns_on_unavailable_audit_ledger(tmp_path, monkeypatch):
+    import dftk.core.audit as audit_mod
+
+    _clear_host_env(monkeypatch)
+    # A path whose parent is an existing *file* cannot be created -> ledger
+    # construction fails. doctor_report must warn instead of staying silent.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("i am a file")
+    monkeypatch.setenv("DFTK_AUDIT_LOG", str(blocker / "audit.jsonl"))
+    monkeypatch.setattr(audit_mod, "_DEFAULT_AUDIT_LOG_RESOLVED", False)
+    monkeypatch.setattr(audit_mod, "_DEFAULT_AUDIT_LOG", None)
+    monkeypatch.setattr(audit_mod, "_DEFAULT_AUDIT_LOG_ERROR", None)
+
+    report = doctor.doctor_report()
+    codes = [w["code"] for w in report["warnings"]]
+    assert "audit-ledger-unavailable" in codes
+
+
+def test_doctor_no_audit_warning_without_env(tmp_path, monkeypatch):
+    _clear_host_env(monkeypatch)
+    monkeypatch.delenv("DFTK_AUDIT_LOG", raising=False)
+    report = doctor.doctor_report()
+    codes = [w["code"] for w in report["warnings"]]
+    assert "audit-ledger-unavailable" not in codes
+    assert "audit-ledger-dropping" not in codes
+

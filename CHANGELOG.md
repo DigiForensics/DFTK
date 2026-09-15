@@ -22,6 +22,27 @@ Changed:
 
 ## Unreleased
 
+New:
+
+- The chain-of-custody audit ledger is now a hash chain. Each record carries `seq`,
+  `prev_hash` and `record_hash` (SHA-256 over the canonical JSON of the record
+  without its own hash), and the position is resolved from the ledger itself, so
+  appends from another process or a later run continue the same chain.
+- Added `dftk audit verify <ledger>`: recomputes the chain and reports edited,
+  deleted, reordered, truncated and downgraded records. Exit code 0 intact,
+  1 defective, 2 unreadable. Verification is read-only.
+- Added `dftk audit seal <ledger>`: writes an external anchor (record count, last
+  record hash, whole-file SHA-256) so deletion from the end of a ledger is
+  detectable; pass it back with `--seal`. A defective ledger refuses to seal.
+- Added the `custody.ledger_verify` capability, the same check as a forensic tool:
+  it returns `facts.verdict` (`intact`/`legacy`/`partial`/`defective`) and cites the
+  ledger as `Evidence`. A negative integrity finding is an examination result, not a
+  tool failure — status stays `ok` and defects are surfaced as warnings.
+- Ledger appends take a cross-process advisory lock shared with the case store
+  (`dftk.core.filelock`), so concurrent writers cannot claim the same `seq`.
+
+Changed:
+
 - CLI runs now return exit code 2 for `unsupported` and `blocked` observations;
   `ok`/`partial` return 0 and execution errors return 1.
 - The MCP optional dependency accepts the supported `mcp>=2.0.0,<3` range, matching

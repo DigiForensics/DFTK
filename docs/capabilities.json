@@ -1,9 +1,9 @@
 {
   "schema_version": "3",
   "toolkit_version": "3.4.0",
-  "tool_count": 79,
+  "tool_count": 80,
   "safety_counts": {
-    "READ_ONLY": 78,
+    "READ_ONLY": 79,
     "STATEFUL": 1
   },
   "domain_counts": {
@@ -14,6 +14,7 @@
     "browser": 4,
     "correlation": 1,
     "crypto": 3,
+    "custody": 1,
     "database": 4,
     "docker": 2,
     "email": 4,
@@ -752,6 +753,42 @@
       ],
       "produces": [
         "entropy_profile"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium"
+    },
+    {
+      "name": "custody.ledger_verify",
+      "description": "Verify a DFTK chain-of-custody audit ledger (JSONL). Recomputes the per-record SHA-256 hash chain and reports records that were edited, deleted, reordered, truncated or downgraded, plus optionally compares the ledger against a seal written by 'dftk audit seal'. Verification is read-only. A status of ok means verification completed: read facts.verdict ('intact'/'legacy'/'partial'/'defective') and facts.chain_ok for the result — a negative integrity finding is an examination result, not a tool failure.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "seal": {
+            "type": "string"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "default": 1073741824
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "custody",
+        "audit",
+        "integrity",
+        "triage"
+      ],
+      "produces": [
+        "ledger_verification"
       ],
       "requires": [],
       "deterministic": true,
