@@ -33,6 +33,7 @@ from .skill_bundle import (
     install_skill,
 )
 from .manifest import capability_manifest
+from .core.readiness import tool_readiness
 
 from . import __version__ as TOOLKIT_VERSION  # single source of truth; never hardcode
 
@@ -98,6 +99,7 @@ def _spec_dict(spec):
         "requires": list(spec.requires),
         "deterministic": spec.deterministic,
         "cost_hint": spec.cost_hint,
+        "readiness": tool_readiness(spec),
     }
 
 
@@ -477,6 +479,14 @@ def _cmd_doctor(_args):
     return 0 if report.get("ok") else 1
 
 
+def _cmd_selftest(_args):
+    from .core.selftest import run_selftest
+
+    report = run_selftest()
+    _emit(report)
+    return 1 if report["crashed"] else 0
+
+
 def _cmd_prepare(args):
     from .core import toolchain
 
@@ -755,8 +765,15 @@ def main(argv=None):
                      help="record a JSONL chain-of-custody ledger of every MCP capability run "
                           "(default location: <workspace>/audit.jsonl when flag is given without a path)")
 
+    selftest = sub.add_parser(
+        "selftest",
+        help="smoke-test every runnable capability end-to-end as an installation-availability proof",
+    )
+
     args = parser.parse_args(argv)
 
+    if args.cmd == "selftest":
+        return _cmd_selftest(args)
     if args.cmd == "skill":
         return _cmd_skill(args)
     if args.cmd == "agent":

@@ -1,8 +1,13 @@
-# Capability map — DFTK 3.4.0
+# Capability map — DFTK 3.5.0
 
 The registry contains 80 tools: 79 `READ_ONLY` and 1 `STATEFUL`. The registry is
 the source of truth for capability metadata; `scripts/check_docs.py` verifies this
 summary against the loaded runtime.
+
+Each tool also advertises a runtime `readiness` (`runnable` / `degraded` /
+`blocked`) derived from its declared dependencies. Run `dftk doctor` to see how
+many tools are runnable in your environment and `dftk selftest` to smoke-test
+every runnable capability end-to-end.
 
 ## Artifact and filesystem
 

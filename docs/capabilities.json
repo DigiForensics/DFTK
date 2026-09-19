@@ -1,6 +1,6 @@
 {
   "schema_version": "3",
-  "toolkit_version": "3.4.0",
+  "toolkit_version": "3.5.0",
   "tool_count": 80,
   "safety_counts": {
     "READ_ONLY": 79,
@@ -65,7 +65,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "android.apk_inventory",
@@ -92,7 +96,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "android.apk_manifest",
@@ -126,7 +134,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "android.apk_search",
@@ -165,7 +177,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "android.apk_signing_inventory",
@@ -193,7 +209,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "android.appdata_inventory",
@@ -227,7 +247,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "android.dex_strings",
@@ -264,7 +288,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "archive.extract_safe",
@@ -308,7 +336,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "archive.inventory",
@@ -339,7 +371,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "artifact.inspect",
@@ -367,7 +403,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "binary.elf_inventory",
@@ -402,7 +442,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "binary.native_indicator_scan",
@@ -434,7 +478,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "binary.pe_inventory",
@@ -470,7 +518,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "browser.chromium_cookies",
@@ -506,7 +558,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "browser.chromium_downloads",
@@ -540,7 +596,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "browser.chromium_history",
@@ -574,7 +634,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "browser.firefox_history",
@@ -608,7 +672,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "correlation.entity_graph",
@@ -654,7 +722,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "crypto.bip39_scan",
@@ -693,7 +765,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "crypto.bip39_validate",
@@ -720,7 +796,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "crypto.entropy_profile",
@@ -756,7 +836,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "custody.ledger_verify",
@@ -792,7 +876,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "database.sql_dump_inventory",
@@ -833,7 +921,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "database.sqlite_inventory",
@@ -868,7 +960,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "database.sqlite_query",
@@ -908,7 +1004,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "database.sqlite_search",
@@ -956,7 +1056,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "docker.offline_inventory",
@@ -987,7 +1091,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "docker.offline_logs",
@@ -1023,7 +1131,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "email.auth_analyze",
@@ -1050,7 +1162,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "email.dkim_verify",
@@ -1080,7 +1196,22 @@
         "dnspython"
       ],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "dkimpy",
+            "label": "email:dkim",
+            "install": "pip install \"dftk[email]\""
+          },
+          {
+            "name": "dnspython",
+            "label": "email:dns",
+            "install": "pip install \"dftk[email]\""
+          }
+        ]
+      }
     },
     {
       "name": "email.mime_inventory",
@@ -1118,7 +1249,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "email.spf_verify",
@@ -1156,7 +1291,22 @@
         "dnspython"
       ],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "pyspf",
+            "label": "email:spf",
+            "install": "pip install \"dftk[email]\""
+          },
+          {
+            "name": "dnspython",
+            "label": "email:dns",
+            "install": "pip install \"dftk[email]\""
+          }
+        ]
+      }
     },
     {
       "name": "encoding.decode_candidates",
@@ -1187,7 +1337,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "evidence.intake",
@@ -1232,7 +1386,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "file.hash",
@@ -1268,7 +1426,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "file.search_tree",
@@ -1319,7 +1481,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "file.strings",
@@ -1356,7 +1522,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "file.strings_unicode",
@@ -1392,7 +1562,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "image.e01_filesystem_inventory",
@@ -1428,7 +1602,22 @@
         "pytsk3"
       ],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "pyewf",
+            "label": "disk:pyewf",
+            "install": "pip install pyewf"
+          },
+          {
+            "name": "pytsk3",
+            "label": "disk:pytsk3",
+            "install": "pip install pytsk3"
+          }
+        ]
+      }
     },
     {
       "name": "image.e01_inventory",
@@ -1457,7 +1646,17 @@
         "pyewf"
       ],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "pyewf",
+            "label": "disk:pyewf",
+            "install": "pip install pyewf"
+          }
+        ]
+      }
     },
     {
       "name": "linux.auth_events",
@@ -1496,7 +1695,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "linux.offline_inventory",
@@ -1527,7 +1730,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "linux.package_events",
@@ -1561,7 +1768,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "linux.persistence_inventory",
@@ -1593,7 +1804,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "malware.yara_scan",
@@ -1660,7 +1875,17 @@
         "yara-python"
       ],
       "deterministic": true,
-      "cost_hint": "high"
+      "cost_hint": "high",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "yara-python",
+            "label": "malware:yara",
+            "install": "pip install \"dftk[yara]\""
+          }
+        ]
+      }
     },
     {
       "name": "network.capture_protocols",
@@ -1698,7 +1923,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "network.pcap_inventory",
@@ -1733,7 +1962,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "network.pcapng_inventory",
@@ -1768,7 +2001,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.agent.guided_intake",
@@ -1814,7 +2051,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "high"
+      "cost_hint": "high",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.android.appdata_triage",
@@ -1847,7 +2088,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.android.deep_static_triage",
@@ -1879,7 +2124,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.android.static_triage",
@@ -1909,7 +2158,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.artifact.auto_triage",
@@ -1937,7 +2190,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.browser.history_triage",
@@ -1970,7 +2227,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.database.triage",
@@ -1998,7 +2259,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.email.full_offline_triage",
@@ -2026,7 +2291,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.email.offline_triage",
@@ -2053,7 +2322,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.network.capture_triage",
@@ -2086,7 +2359,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.server.deep_offline_triage",
@@ -2118,7 +2395,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "high"
+      "cost_hint": "high",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.server.offline_triage",
@@ -2145,7 +2426,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.timeline.unified",
@@ -2184,7 +2469,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.wallet.mnemonic_scan",
@@ -2215,7 +2504,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "recipe.windows.offline_triage",
@@ -2255,7 +2548,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "server.readonly_inventory",
@@ -2304,7 +2601,17 @@
         "paramiko"
       ],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "paramiko",
+            "label": "ssh:paramiko",
+            "install": "pip install \"dftk[ssh]\""
+          }
+        ]
+      }
     },
     {
       "name": "server.remote_snapshot",
@@ -2371,7 +2678,17 @@
         "paramiko"
       ],
       "deterministic": true,
-      "cost_hint": "high"
+      "cost_hint": "high",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "paramiko",
+            "label": "ssh:paramiko",
+            "install": "pip install \"dftk[ssh]\""
+          }
+        ]
+      }
     },
     {
       "name": "timeline.file_metadata",
@@ -2406,7 +2723,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "timeline.merge",
@@ -2445,7 +2766,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "tree.inventory",
@@ -2480,7 +2805,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "web.access_log_summary",
@@ -2517,7 +2846,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "web.config_candidates",
@@ -2552,7 +2885,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "web.config_extract",
@@ -2588,7 +2925,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "web.webshell_hunt",
@@ -2637,7 +2978,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "high"
+      "cost_hint": "high",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "windows.evtx_hunt",
@@ -2690,7 +3035,17 @@
         "python-evtx"
       ],
       "deterministic": true,
-      "cost_hint": "high"
+      "cost_hint": "high",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "python-evtx",
+            "label": "windows:evtx",
+            "install": "pip install \"dftk[windows]\""
+          }
+        ]
+      }
     },
     {
       "name": "windows.evtx_summary",
@@ -2729,7 +3084,17 @@
         "python-evtx"
       ],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "python-evtx",
+            "label": "windows:evtx",
+            "install": "pip install \"dftk[windows]\""
+          }
+        ]
+      }
     },
     {
       "name": "windows.lnk",
@@ -2759,7 +3124,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "windows.mft",
@@ -2797,7 +3166,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "medium"
+      "cost_hint": "medium",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "windows.prefetch",
@@ -2827,7 +3200,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "windows.recyclebin",
@@ -2860,7 +3237,11 @@
       ],
       "requires": [],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "runnable",
+        "missing": []
+      }
     },
     {
       "name": "windows.registry_inventory",
@@ -2897,7 +3278,17 @@
         "python-registry"
       ],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "python-registry",
+            "label": "windows:registry",
+            "install": "pip install \"dftk[windows]\""
+          }
+        ]
+      }
     },
     {
       "name": "windows.usb_artifacts",
@@ -2927,7 +3318,17 @@
         "python-registry"
       ],
       "deterministic": true,
-      "cost_hint": "low"
+      "cost_hint": "low",
+      "readiness": {
+        "state": "degraded",
+        "missing": [
+          {
+            "name": "python-registry",
+            "label": "windows:registry",
+            "install": "pip install \"dftk[windows]\""
+          }
+        ]
+      }
     }
   ]
 }

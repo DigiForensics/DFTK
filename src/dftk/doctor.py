@@ -22,6 +22,7 @@ from typing import Any
 
 from .catalog import load_builtin_tools
 from .core.external_tools import detect_external_tools, toolchain_roots, _resolve_binary
+from .core.readiness import readiness_summary
 from .core.registry import registry
 
 
@@ -141,6 +142,7 @@ def doctor_report() -> dict[str, Any]:
     """
     load_builtin_tools()
     specs = list(registry.specs())
+    readiness = readiness_summary(specs)
     safety_counts: dict[str, int] = {}
     network_tools = 0
     for spec in specs:
@@ -258,6 +260,7 @@ def doctor_report() -> dict[str, Any]:
             "safety": safety_counts,
             "network_declared": network_tools,
         },
+        "readiness": readiness,
         "mcp": {
             "installed": mcp_installed,
             "version": mcp_version,

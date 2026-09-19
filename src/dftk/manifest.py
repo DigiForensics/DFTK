@@ -7,6 +7,7 @@ from typing import Any
 from . import __version__ as TOOLKIT_VERSION
 from .catalog import load_builtin_tools
 from .core.registry import registry
+from .core.readiness import tool_readiness
 
 
 MANIFEST_SCHEMA_VERSION = "3"
@@ -33,6 +34,7 @@ def capability_manifest() -> dict[str, Any]:
                 "requires": list(spec.requires),
                 "deterministic": spec.deterministic,
                 "cost_hint": spec.cost_hint,
+                "readiness": tool_readiness(spec),
             }
         )
     return {
