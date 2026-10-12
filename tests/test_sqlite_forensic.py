@@ -26,8 +26,9 @@ from dftk.core.sqlite_forensic import read_varint, parse_record
 get_registry()  # ensure built-ins (database.sqlite_*) are registered
 
 
-def _make_db(path: Path, *, wal: bool = False) -> Path | None:
+def _make_db(path: Path, *, wal: bool = False, secure_delete: bool = False) -> Path | None:
     con = sqlite3.connect(str(path))
+    con.execute("PRAGMA secure_delete=" + ("ON" if secure_delete else "OFF"))
     if wal:
         con.execute("PRAGMA journal_mode=WAL")
         con.execute("PRAGMA wal_autocheckpoint=0")
@@ -155,6 +156,7 @@ def test_deleted_wide_row_is_recovered(tmp_path: Path):
     """Larger deleted rows must be recovered, not silently skipped."""
     db = tmp_path / "del.db"
     con = sqlite3.connect(str(db))
+    con.execute("PRAGMA secure_delete=OFF")
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("CREATE TABLE t(id INTEGER PRIMARY KEY, thread_id INTEGER, "
                 "address TEXT, body TEXT, date INTEGER)")
@@ -176,3 +178,12 @@ def test_deleted_wide_row_is_recovered(tmp_path: Path):
     texts = " ".join(str(c) for s in obs.facts.get("samples", [])
                      for r in s["records"] for c in r["columns"])
     assert "wire transfer confirmed" in texts
+
+
+def test_securely_erased_rows_are_not_reported_as_recovered(tmp_path):
+    db = tmp_path / "erased.db"
+    _make_db(db, secure_delete=True)
+    obs = registry.run("database.sqlite_deleted_records", {"path": str(db)})
+    assert obs.status.value in ("ok", "partial")
+    recovered = next(row["recovered"] for row in obs.facts["per_table"] if row["table"] == "chat")
+    assert recovered == 0
