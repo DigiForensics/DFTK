@@ -66,17 +66,20 @@ class ToolRegistry:
 
     def tool(self, *, name: str, description: str, parameters: dict[str, Any],
              safety: SafetyLevel = SafetyLevel.READ_ONLY, network: bool = False,
-             tags: tuple[str, ...] | list[str] = (), produces: tuple[str, ...] | list[str] = (),
-             requires: tuple[str, ...] | list[str] = (), deterministic: bool = True,
+             tags: tuple[str, ...] | list[str] | str = (), produces: tuple[str, ...] | list[str] | str = (),
+             requires: tuple[str, ...] | list[str] | str = (), deterministic: bool = True,
              cost_hint: str = "low", path_roles: dict[str, str] | None = None):
         def deco(func: ToolFunc):
-            # Keyword construction: ToolSpec has no cost_hint field, so a positional
-            # cost_hint would silently collide with path_roles (the trailing field).
+            # Accept a single semantic value without splitting it into characters.
+            def values(value):
+                return (value,) if isinstance(value, str) else tuple(value)
+
             self.register(ToolSpec(
                 name=name, description=description, safety=safety, parameters=parameters,
-                network=network, tags=tuple(tags), produces=tuple(produces),
-                requires=tuple(requires), deterministic=deterministic,
+                network=network, tags=values(tags), produces=values(produces),
+                requires=values(requires), deterministic=deterministic,
                 path_roles=path_roles or {},
+                cost_hint=cost_hint,
             ), func)
             return func
         return deco

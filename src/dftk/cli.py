@@ -309,6 +309,23 @@ def main(argv=None):
     describe = sub.add_parser("describe")
     describe.add_argument("name")
 
+    sgt = sub.add_parser(
+        "suggest",
+        help="agent entry point: given a file path, a bare forensic filename (e.g. '$MFT'), "
+        "or an evidence kind (e.g. 'tls', 'registry', 'memory'), list the applicable "
+        "capabilities and why they match",
+    )
+    sgt.add_argument("query", help="evidence path, bare forensic filename, or evidence kind")
+    sgt.add_argument(
+        "--direction",
+        choices=["consume", "produce"],
+        default="consume",
+        help="consume: candidate tools for this input; produce: tools declaring this output evidence kind",
+    )
+    sgt.add_argument("--limit", type=int, default=12)
+    sgt.add_argument("--max-safety", choices=[s.name for s in SafetyLevel], default="READ_ONLY")
+    sgt.add_argument("--allow-network", action="store_true")
+
     run = sub.add_parser("run")
     run.add_argument("name")
     run.add_argument("target", nargs="?", help="positional input path; auto-maps to the tool's primary input parameter (usually 'path')")
@@ -440,6 +457,14 @@ def main(argv=None):
         else:
             _emit([_spec_dict(spec) for spec in specs])
         return 0
+    if args.cmd == "suggest":
+        from dftk.suggest import suggest as _suggest_fn
+
+        result = _suggest_fn(args.query, direction=args.direction, limit=args.limit,
+                             policy=SafetyPolicy(max_level=SafetyLevel[args.max_safety],
+                                                 allow_network=args.allow_network))
+        _emit(result)
+        return 0 if result["ok"] else 1
     if args.cmd == "describe":
         try:
             _emit(_spec_dict(registry.get(args.name)))

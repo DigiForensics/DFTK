@@ -24,7 +24,7 @@ DFTK is not an autonomous forensic agent. It is a library of structured operatio
 
 - **Read-only by default.** Read-only tools open evidence without modifying it. Operations that write derived output require the caller to select an explicit `STATEFUL` or `DESTRUCTIVE` safety level.
 - **Zero mandatory dependencies.** The base package has no mandatory third-party runtime dependencies. Optional parsers (E01/TSK, Windows Registry/EVTX, DKIM/SPF, SSH) report `unsupported` when their dependency is missing, instead of guessing.
-- **One registry, 113 tools.** Each tool declares its parameters, safety level, semantic tags, network needs, and produced-evidence types, so a planner can pick the right tool from an evidence requirement.
+- **One registry, 117 tools.** Each tool declares its parameters, safety level, semantic tags, network needs, and produced-evidence types, so a planner can pick the right tool from an evidence requirement.
 - **Safety enforced in one place.** `READ_ONLY < STATEFUL < DESTRUCTIVE`; no registered tool is `DESTRUCTIVE`. Network access is gated behind an explicit opt-in.
 
 ## Contents
@@ -74,6 +74,10 @@ Inspect a tool's contract (parameters, safety level, tags, produced evidence):
 
 ```bash
 dftk describe android.apk_manifest
+
+# Recommend capabilities from an evidence path or output kind
+dftk suggest capture.pcap
+dftk suggest tls_sni --direction produce
 ```
 
 Analyze an artifact:
@@ -145,7 +149,7 @@ dftk doctor
 dftk mcp
 ```
 
-The MCP server exposes six meta-tools: health check, capability search, describe, run, case management, and paged reading of persisted case runs. It defaults to `READ_ONLY`, network-off, stdio-only operation. The Agent cannot raise the safety ceiling or enable network access; `--root`, `--max-safety`, `--allow-network`, and timeout are set by whoever launches the server.
+The MCP server exposes seven meta-tools: health check, capability search, evidence-based suggestions, describe, run, case management, and paged reading of persisted case runs. It defaults to `READ_ONLY`, network-off, stdio-only operation. The Agent cannot raise the safety ceiling or enable network access; `--root`, `--max-safety`, `--allow-network`, and timeout are set by whoever launches the server.
 
 For multi-step investigations, create a normal DFTK case and pass its `case_id` to the MCP `dftk_run` tool; the Observation is persisted in the same `CaseSession` format the CLI uses.
 
@@ -196,7 +200,7 @@ meta         tool and run metadata
 
 ## Capability model
 
-DFTK 3.5.0 contains a registry of **113 tools** (109 `READ_ONLY`, 4 `STATEFUL`) — **99 primitives** plus **14 recipes** — spanning:
+DFTK 3.5.0 contains a registry of **117 tools** (113 `READ_ONLY`, 4 `STATEFUL`) — **103 primitives** plus **14 recipes** — spanning:
 
 - artifact identification, hashing, strings, search and timeline;
 - APK, DEX, binary AXML, Android app data and endpoint extraction;

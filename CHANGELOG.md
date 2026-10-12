@@ -2,6 +2,30 @@
 
 All notable public changes to DFTK are recorded here.
 
+## Unreleased
+
+- Add four read-only browser tools: `browser.chromium_bookmarks`,
+  `browser.firefox_bookmarks`, `browser.firefox_cookies`, and
+  `browser.chromium_search_terms`. Preserve record locators, source SHA-256,
+  folder/GUID relationships and raw timestamp context; bookmark/cookie events
+  compose with CaseSession timelines. Cookie values are hidden unless requested.
+- Distinguish recorded search terms from exact search timestamps. Signal
+  truncation, malformed nodes, invalid dates and excluded SQLite sidecars as
+  `partial`, unsupported schemas as `unsupported`, and parse/read failures as
+  `error`. Add record/field/query/JSON bounds without runtime dependencies.
+- Percent-encode SQLite file URIs so evidence paths containing `?`, `#`, `%`,
+  spaces and Unicode open the intended file in immutable mode.
+
+- Add `dftk suggest` / `dftk_suggest` for explained capability discovery from
+  evidence filenames, extensions, and bounded regular-file signature probes.
+  Signature hints outrank misleading extensions; output discovery uses declared
+  `produces` kinds and performs no file reads. MCP probes resolve under the
+  evidence root and reject traversal and symlink escapes.
+- Include parameter contracts, dependencies, match reasons, and server-owned
+  safety/network policy eligibility in suggestions. MCP now exposes seven meta-tools.
+- Preserve single-string registry tags, output kinds, and requirements as whole
+  values (previously split into characters), and retain declared cost hints.
+
 ## 3.5.0 — Forensic Depth Release
 
 > Shift from "能看、能扫、能调用" to "能恢复、能关联、能提取、能证明来源".

@@ -37,7 +37,7 @@ def _unix_micro_time(v):
     except (TypeError,ValueError,OverflowError,OSError): return None
 
 def _open_ro(p:Path):
-    con=sqlite3.connect(f"file:{p.resolve().as_posix()}?mode=ro&immutable=1",uri=True)
+    con=sqlite3.connect(p.resolve().as_uri() + "?mode=ro&immutable=1",uri=True)
     con.execute('PRAGMA query_only=ON')
     return con
 

@@ -81,7 +81,7 @@ def test_mcp_run_ok_reflects_observation_status(tmp_path: Path):
     assert err_result["observation"]["errors"]
 
 
-def test_mcp_tool_surface_is_six(tmp_path: Path):
+def test_mcp_tool_surface_is_seven(tmp_path: Path):
     # dev extra pins MCP so release CI performs a real in-memory client/server
     # round trip. Minimal/base environments may intentionally omit the extra.
     try:
@@ -105,11 +105,15 @@ def test_mcp_tool_surface_is_six(tmp_path: Path):
                 "dftk_doctor",
                 "dftk_search_capabilities",
                 "dftk_describe",
+                "dftk_suggest",
                 "dftk_run",
                 "dftk_case",
                 "dftk_read_case_run",
             ]
             doctor = await client.call_tool("dftk_doctor", {})
             assert doctor.structured_content is not None
+            suggestions = await client.call_tool("dftk_suggest", {"query": "sample.evtx"})
+            assert suggestions.structured_content["ok"] is True
+            assert suggestions.structured_content["results"][0]["name"] == "windows.evtx_summary"
 
     asyncio.run(round_trip())

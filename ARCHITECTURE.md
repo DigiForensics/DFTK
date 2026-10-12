@@ -67,7 +67,7 @@ The ledger sits strictly outside the evidence contract. It records provenance *a
 
 The default policy allows only `READ_ONLY` and disallows network traffic. Currently:
 
-- 109 tools are `READ_ONLY` (113 registered in total);
+- 113 tools are `READ_ONLY` (117 registered in total);
 - four tools are `STATEFUL` because they write derived workspace output while leaving the source evidence unchanged: `archive.extract_safe`, `filesystem.extract`, `network.http_sessions` and `case.report_html`;
 - no registered tool is `DESTRUCTIVE`;
 - network-capable tools are separately gated.
@@ -110,7 +110,7 @@ The MCP server is an adapter, not a new forensic runtime:
 ```text
 Host Agent
     |
-    | stdio MCP (6 meta-tools)
+    | stdio MCP (7 meta-tools)
     v
 DFTK MCP adapter
     |  server-owned root / SafetyPolicy / network gate / timeout

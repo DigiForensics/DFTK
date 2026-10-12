@@ -7,6 +7,29 @@ DFTK 3.5.0 provides two Agent-facing interfaces:
 
 The MCP server is deliberately local and stdio-only in 3.5.0.
 
+## Recommended agent loop
+
+The toolkit is designed to be driven by an LLM Agent, not a human at a prompt.
+The intended call sequence is:
+
+1. `dftk_doctor` — confirm the runtime, optional extras, and the server-owned
+   safety/root policy before doing anything.
+2. `dftk_suggest` — the Agent entry point. Hand it an evidence **path**
+   (`/cases/2026-001/capture.pcap`), a bare forensic **filename** (`$MFT`,
+   `Amcache.hve`), or an evidence **kind** (`tls`, `registry`, `memory`). It
+   returns the ranked capabilities that apply, each with a `why` string, so the
+   Agent can justify its choice instead of guessing. Use `direction='produce'`
+   to find tools declaring a required output kind (for example `tls_sni`).
+3. `dftk_describe` — read the exact parameter / safety / dependency contract for
+   the chosen capability before calling it.
+4. `dftk_run` — execute, optionally persisting into an existing case.
+5. `dftk_read_case_run` — page the resulting Observation (evidence / facts) when
+   it is too large for a single response.
+
+This loop keeps the Agent inside the server-owned safety/root/network policy: it
+never sets `--allow-network` or a higher `--max-safety` itself; those are
+server-owner switches.
+
 ## Install
 
 ```bash
@@ -89,14 +112,15 @@ Kimi supports project-level `.kimi-code/mcp.json` and stdio MCP. Example:
       "args": ["mcp", "--root", "."],
       "startupTimeoutMs": 30000,
       "toolTimeoutMs": 240000,
-      "enabledTools": [
-        "dftk_doctor",
-        "dftk_search_capabilities",
-        "dftk_describe",
-        "dftk_run",
-        "dftk_case",
-        "dftk_read_case_run"
-      ]
+        "enabledTools": [
+          "dftk_doctor",
+          "dftk_search_capabilities",
+          "dftk_suggest",
+          "dftk_describe",
+          "dftk_run",
+          "dftk_case",
+          "dftk_read_case_run"
+        ]
     }
   }
 }
@@ -169,3 +193,25 @@ Any AgentSkills-compatible host can use the complete standalone `DFTK-skill` dir
 ## Security note
 
 DFTK MCP constrains **DFTK MCP calls**. It cannot prevent a host Agent from using some unrelated unrestricted shell/filesystem tool. For forensic evidence handling, configure the host Agent's own permissions so DFTK is the intended evidence-access path and do not grant broader write/shell access than the examination requires.
+
+## Capability suggestions
+
+`dftk suggest capture.pcap` and MCP `dftk_suggest(query="capture.pcap")`
+rank candidates using known filenames, extensions, bounded file-header probes,
+and the live registry. MCP relative paths resolve under the server's evidence root;
+outside paths and symlink escapes are rejected before probing. Missing files can
+still be planned from their names. Only regular files are probed (at most 4096 bytes).
+
+Use `direction="produce"` with a required output kind such as `tls_sni`,
+`timeline`, or `partition_table`. This mode matches declared `produces` values
+and never reads files. It does not enumerate downstream steps from an input file.
+
+Each candidate includes `why`, all `reasons`, its parameter contract, dependencies,
+and `policy_allowed` / `policy_blockers`. Policy eligibility checks safety and
+network access only; it does not establish format validity or dependency availability.
+Suggestions are discovery hints, not findings. Confirm the contract with
+`dftk_describe`, then evaluate the actual run's status and evidence. A successful
+lookup with no matches is not a negative forensic finding.
+
+CLI `--max-safety` and `--allow-network` only annotate the proposed policy in
+suggestions; this command never executes a capability or changes server policy.

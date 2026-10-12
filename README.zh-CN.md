@@ -24,7 +24,7 @@ DFTK 不是一个自主取证智能体，而是一组结构化的操作库。由
 
 - **默认只读。** 只读工具以只读方式打开证据，不修改它；会写入派生产物的操作需要调用方显式选择 `STATEFUL` 或 `DESTRUCTIVE` 安全级别。
 - **零强制依赖。** 基础包没有强制的第三方运行依赖。专业解析器（E01/TSK、Windows 注册表/EVTX、DKIM/SPF、SSH）在依赖缺失时返回 `unsupported`，而不是替你瞎猜。
-- **一个注册表，113 个工具。** 每个工具都声明了参数、安全级别、语义标签、网络需求与产出证据类型，规划器可以据此按证据需求挑选工具。
+- **一个注册表，117 个工具。** 每个工具都声明了参数、安全级别、语义标签、网络需求与产出证据类型，规划器可以据此按证据需求挑选工具。
 - **安全集中管控。** `READ_ONLY < STATEFUL < DESTRUCTIVE`；所有已注册工具中没有任何一个是 `DESTRUCTIVE`。网络访问独立受控，必须显式开启。
 
 ## 目录
@@ -72,6 +72,10 @@ dftk list
 
 ```bash
 dftk describe android.apk_manifest
+
+# 根据检材推荐候选能力，或查询某类证据的产出工具
+dftk suggest capture.pcap
+dftk suggest tls_sni --direction produce
 ```
 
 分析一个取证对象：
@@ -141,7 +145,7 @@ dftk doctor
 dftk mcp
 ```
 
-MCP 默认 `READ_ONLY`、禁止网络、仅使用 stdio，并只暴露 6 个元工具：环境检查、能力发现、能力描述、运行、Case 管理、读取已持久化的 Case Observation。模型不能自行提高安全等级、开启网络或修改 evidence root；这些只能由启动 MCP 的人员设置。
+MCP 默认 `READ_ONLY`、禁止网络、仅使用 stdio，并只暴露 7 个元工具：环境检查、能力搜索、检材能力推荐、能力描述、运行、Case 管理、读取已持久化的 Case Observation。模型不能自行提高安全等级、开启网络或修改 evidence root；这些只能由启动 MCP 的人员设置。
 
 对于多步调查，先建一个普通 DFTK case，再把 `case_id` 传给 MCP 的 `dftk_run` 工具；Observation 会以 CLI 相同的 `CaseSession` 格式落盘。
 
@@ -192,7 +196,7 @@ meta         工具与运行元数据
 
 ## 能力模型
 
-DFTK 3.5.0 包含 **113 个工具**（109 个 `READ_ONLY`、4 个 `STATEFUL`）——**99 个原语**加 **14 个配方**，覆盖：
+DFTK 3.5.0 包含 **117 个工具**（113 个 `READ_ONLY`、4 个 `STATEFUL`）——**103 个原语**加 **14 个配方**，覆盖：
 
 - 取证对象识别、哈希、字符串、搜索与时间线；
 - APK、DEX、二进制 AXML、Android 应用数据与端点提取；

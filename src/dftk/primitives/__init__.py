@@ -13,4 +13,4 @@
 # limitations under the License.
 
 # Import modules for registry side effects.
-from . import artifact, files, android, binary, binary_deep, crypto, linux, database, network, email_auth, e01, server, windows, windows_host, windows_usn, windows_shimcache, windows_srum, windows_amcache, memory_volatility, browser, timeline, filesystem, report, case_verify, application_profiles  # noqa: F401
+from . import artifact, files, android, binary, binary_deep, crypto, linux, database, network, email_auth, e01, server, windows, windows_host, windows_usn, windows_shimcache, windows_srum, windows_amcache, memory_volatility, browser, browser_extended, timeline, filesystem, report, case_verify, application_profiles  # noqa: F401

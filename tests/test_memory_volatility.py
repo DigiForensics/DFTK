@@ -49,10 +49,12 @@ def test_parse_vol_table_space_separated():
     assert len(rows) == 2
 
 
-def test_missing_volatility_returns_unsupported():
-    # Volatility 3 is not installed in this environment; the tool must degrade
-    # to UNSUPPORTED rather than crashing.
+def test_missing_volatility_returns_unsupported(monkeypatch):
+    # Simulate a missing dependency even on hosts with Volatility installed.
+    monkeypatch.setattr("dftk.core.registry.external_tool_available", lambda name: False)
+    monkeypatch.setattr(mv, "resolve_external_tool", lambda name: None)
     obs = registry.run("memory.processes", {"image": "/no/such/memory.raw"})
     assert obs.status.value == "unsupported"
-    # also confirm through the requires gate directly
-    assert obs.status.value == "unsupported"
+    direct = mv._run_plugin("memory.processes", "windows.pslist", "processes",
+                            "/no/such/memory.raw", 1, 10)
+    assert direct.status.value == "unsupported"

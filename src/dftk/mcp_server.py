@@ -21,8 +21,10 @@ import tempfile
 import threading
 
 from .catalog import load_builtin_tools
+from . import suggest as _suggest
 from .core.case import CaseError, CaseSession
 from .core.models import SafetyLevel
+from .core.safety import SafetyPolicy
 from .core.registry import registry
 from .doctor import _mcp_version_supported, doctor_report
 from . import __version__ as _TOOLKIT_VERSION
@@ -355,6 +357,16 @@ class DFTKMCPGateway:
             return {"ok": False, "status": "unknown", "error": f"unknown DFTK capability: {name}"}
         return {"ok": True, "capability": _spec_dict(spec)}
 
+    def suggest(self, query: str, direction: str = "consume", limit: int = 12) -> dict[str, Any]:
+        """Discover candidate capabilities under the server-owned root/policy.
+
+        Consume uses input hints; produce matches declared output evidence kinds.
+        """
+        return _suggest.suggest(
+            query, direction=direction, limit=limit, evidence_root=self.root,
+            policy=SafetyPolicy(max_level=SafetyLevel[self.max_safety], allow_network=self.allow_network),
+        )
+
     def _worker(self, request: dict[str, Any]) -> dict[str, Any]:
         raw = _safe_json_bytes(request)
         if len(raw) > _MAX_ARGUMENT_BYTES:
@@ -540,6 +552,11 @@ def create_server(gateway: DFTKMCPGateway):
     def dftk_describe(name: str) -> dict[str, Any]:
         """Return the exact parameter, safety, dependency, tag and evidence contract for one DFTK capability."""
         return _safe("dftk_describe", lambda: gateway.describe(name))
+
+    @server.tool()
+    def dftk_suggest(query: str, direction: str = "consume", limit: int = 12) -> dict[str, Any]:
+        """Discover explained candidate capabilities from an evidence path, filename, or kind. Consume uses input hints with root-confined header probes; produce matches declared output kinds without file reads. policy_allowed covers safety/network only; check dependencies and describe the chosen capability before running."""
+        return _safe("dftk_suggest", lambda: gateway.suggest(query=query, direction=direction, limit=limit))
 
     @server.tool()
     def dftk_run(name: str, params: dict[str, Any] | None = None, case_id: str | None = None) -> dict[str, Any]:

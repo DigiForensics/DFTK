@@ -1,6 +1,6 @@
 # Capability map — DFTK 3.5.0
 
-The registry contains 113 tools (109 READ_ONLY, 4 STATEFUL) — 99 primitives plus 14 recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
+The registry contains 117 tools (113 READ_ONLY, 4 STATEFUL) — 103 primitives plus 14 recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
 
 ## Artifact and filesystem
 
@@ -123,6 +123,17 @@ Optional forensic-environment capabilities:
 - Chromium download records and URL chains.
 - Chromium cookie metadata, optional plaintext values, and encrypted-value hashes/lengths without decryption.
 - Firefox `places.sqlite` visits.
+- `browser.chromium_bookmarks` — bounded Bookmarks JSON with folder paths, JSON-pointer locators, added/modified/last-used timestamps; embedded browser checksum is not verified.
+- `browser.firefox_bookmarks` — `moz_bookmarks` joined to `moz_places`, preserving folder ancestry, GUIDs and creation/modification times.
+- `browser.firefox_cookies` — cookie metadata, container/partition origin attributes, optional plaintext values, Unix second/microsecond time conversion; values are hidden by default.
+- `browser.chromium_search_terms` — keyword search records with URL context; URL last-visit time is not an exact search timestamp.
+
+The new SQLite readers use immutable main-database views. A WAL/journal sidecar
+marks the result `partial` because uncheckpointed changes are excluded. Row,
+text-field, JSON byte/depth, and SQLite instruction bounds prevent unbounded
+record materialization. Limits and malformed bookmark nodes produce explicit
+warnings. Bookmark presence, cookie presence and recorded search terms do not
+establish local-user attribution or a completed authenticated action.
 
 ## Email
 

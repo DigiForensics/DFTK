@@ -28,8 +28,8 @@ def test_public_registry_and_run_tool(tmp_path):
     # Shimcache / SRUM, the HTML report layer (case.report_html), the Application
     # Profile architecture (application.profile_*), and audit verification
     # (case.verify).
-    # The full registry (primitives + recipes) is 113 tools.
-    assert len(reg.specs()) == 113
+    # The full registry (primitives + recipes) is 117 tools.
+    assert len(reg.specs()) == 117
     assert reg.get('artifact.inspect').safety.name == 'READ_ONLY'
 
     db=tmp_path/'public-api.db'
