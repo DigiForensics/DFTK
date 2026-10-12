@@ -111,7 +111,10 @@ def install_from_repo_root(repo_root: str | Path, destination: str | Path) -> li
     installed: list[Path] = []
 
     main_dest = base / MAIN_SKILL_NAME
-    _copy_tree(repo_root, main_dest, exclude_top={"skills"})
+    # Keep the canonical progressive tree so links from references/ and the
+    # root skill to skills/<name>/ remain valid. Also install standalone copies
+    # below for hosts that discover only immediate skill directories.
+    _copy_tree(repo_root, main_dest)
     installed.append(main_dest)
 
     skills_dir = repo_root / "skills"

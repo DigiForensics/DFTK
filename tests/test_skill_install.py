@@ -101,8 +101,9 @@ def test_install_from_repo_root(tmp_path: Path):
     assert (base / "apk" / "SKILL.md").is_file()
     assert (base / "server-forensics" / "SKILL.md").is_file()
 
-    # standalone skills must NOT be nested under the main dftk skill
-    assert not (base / "dftk" / "skills").exists()
+    # Preserve the progressive tree as well as the independently discoverable
+    # copies, so canonical links inside the bundle still resolve after install.
+    assert (base / "dftk" / "skills" / "apk" / "SKILL.md").is_file()
 
 
 def test_install_excludes_vcs_metadata(tmp_path: Path):
