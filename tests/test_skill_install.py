@@ -139,3 +139,15 @@ def test_safe_tar_extraction_rejects_path_escape(tmp_path: Path):
     with tarfile.open(fileobj=data, mode="r") as tf:
         with pytest.raises(ValueError, match="escapes destination"):
             _safe_extract_tar(tf, tmp_path / "destination")
+
+
+def test_standalone_links_resolve_into_complete_main_bundle(tmp_path):
+    repo=tmp_path/'repo'
+    repo.mkdir()
+    _make_fake_repo(repo)
+    (repo/'skills/apk/SKILL.md').write_text('---\nname: apk\ndescription: test\n---\n[Shared](../../references/domains/android.md#scope)\n')
+    base=tmp_path/'installed'
+    install_from_repo_root(repo,base)
+    installed=(base/'apk/SKILL.md').read_text()
+    assert '../dftk/references/domains/android.md#scope' in installed
+    assert (base/'dftk/skills/apk/SKILL.md').read_text()==(repo/'skills/apk/SKILL.md').read_text()

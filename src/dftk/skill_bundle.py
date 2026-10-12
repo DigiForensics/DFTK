@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import shutil
+import os
+import re
 import subprocess
 import tarfile
 import tempfile
@@ -123,6 +125,27 @@ def install_from_repo_root(repo_root: str | Path, destination: str | Path) -> li
             if child.is_dir() and not child.name.startswith("."):
                 target = base / child.name
                 _copy_tree(child, target)
+                # A standalone copy has a different parent than the canonical
+                # skills/<name>/ tree. Rebase only real local Markdown links.
+                source_root = repo_root.resolve()
+                for source_md in child.rglob("*.md"):
+                    installed_md = target / source_md.relative_to(child)
+                    def rebase(match):
+                        raw = match.group(1)
+                        link, marker, anchor = raw.partition("#")
+                        if not link or link.startswith(("http://", "https://", "mailto:", "/", "<")):
+                            return match.group(0)
+                        resolved = (source_md.parent / link).resolve()
+                        if not resolved.exists() or not resolved.is_relative_to(source_root):
+                            return match.group(0)
+                        relative = resolved.relative_to(source_root)
+                        if relative.parts and relative.parts[0] == "skills":
+                            dest = base / Path(*relative.parts[1:])
+                        else:
+                            dest = main_dest / relative
+                        rewritten = os.path.relpath(dest.resolve(), installed_md.parent.resolve()).replace(os.sep, "/")
+                        return "](" + rewritten + (marker + anchor if marker else "") + ")"
+                    installed_md.write_text(re.sub(r"\]\(([^)]+)\)", rebase, source_md.read_text(encoding="utf-8")), encoding="utf-8")
                 installed.append(target)
     return installed
 
