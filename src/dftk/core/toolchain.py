@@ -259,12 +259,16 @@ def prepare(
             try:
                 backup_dir.mkdir(parents=True, exist_ok=True)
             except OSError:
+                # A working backup location is required for the rewrite to be
+                # reversible. If we cannot create it, do NOT rewrite (fail-closed):
+                # silently rewriting launchers with no backup would be irreversible.
                 backup_dir = None
-            rewritten, _ = _rewrite_hardcoded_paths(
-                root, rewrite_from, str(root), backup_dir
-            )
-            if backup_dir is not None and rewritten:
-                rewrite_backup_dir = str(backup_dir)
+            if backup_dir is not None:
+                rewritten, _ = _rewrite_hardcoded_paths(
+                    root, rewrite_from, str(root), backup_dir
+                )
+                if rewritten:
+                    rewrite_backup_dir = str(backup_dir)
 
     if make_shims:
         _emit_set_path(shim_dir)

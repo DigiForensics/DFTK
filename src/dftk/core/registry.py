@@ -15,6 +15,8 @@
 from __future__ import annotations
 import importlib.metadata
 from collections.abc import Callable
+import inspect
+from contextvars import ContextVar
 from typing import Any
 from dataclasses import replace
 from .models import Observation, Status, ToolSpec, SafetyLevel
@@ -23,8 +25,11 @@ from .external_tools import external_tool_available, EXTERNAL_TOOL_NAMES
 from .audit import ToolAuditLog, _get_default_audit_log
 from .path_policy import validate_params as _validate_path_params, PathEscapeError
 from .provenance import ProvenanceIndex
+from .parameters import validate as validate_parameters, ParameterError
+import copy
 
 ToolFunc = Callable[..., Observation]
+_ACTIVE_POLICY: ContextVar[SafetyPolicy | None] = ContextVar("dftk_policy", default=None)
 
 
 def _dftk_version() -> str:
@@ -61,6 +66,27 @@ class ToolRegistry:
             spec=replace(spec,tags=parts or ('forensics',))
         if not spec.produces:
             spec=replace(spec,produces=('observation',))
+        schema = copy.deepcopy(spec.parameters)
+        # Normalize legacy contracts centrally; explicit roles always win.
+        roles = dict(schema.get("x-path-roles", {}))
+        inputs = {"path", "root", "image", "system_hive", "evtx", "wal_path", "db_path",
+                  "mft_path", "identity_file", "left", "right"}
+        analysis = {"files", "extra_sources", "seal", "rule_file"}
+        for key, prop in schema.get("properties", {}).items():
+            if key in inputs and prop.get("type") == "string":
+                roles.setdefault(key, "EVIDENCE_INPUT")
+            if key in analysis:
+                roles.setdefault(key, "ANALYSIS_INPUT")
+            if key == "output_dir":
+                roles.setdefault(key, "WORKSPACE_OUTPUT")
+            if "default" in prop and prop["default"] is None and key not in schema.get("required", []):
+                typ = prop.get("type")
+                if isinstance(typ, str) and typ != "null":
+                    prop["type"] = [typ, "null"]
+        if spec.name == "custody.ledger_verify":
+            roles["path"] = "ANALYSIS_INPUT"
+        roles.update(spec.path_roles)
+        spec = replace(spec, parameters=schema, path_roles=roles)
         self._specs[spec.name] = spec
         self._funcs[spec.name] = func
 
@@ -109,7 +135,16 @@ class ToolRegistry:
         audit: ToolAuditLog | None = None,
         caller: str = "cli",
     ) -> Observation:
-        policy = policy or SafetyPolicy()
+        parent_policy = _ACTIVE_POLICY.get()
+        policy = policy or parent_policy or SafetyPolicy()
+        if parent_policy is not None:
+            policy = SafetyPolicy(
+                max_level=min(policy.max_level, parent_policy.max_level),
+                allow_network=policy.allow_network and parent_policy.allow_network,
+                evidence_root=parent_policy.evidence_root or policy.evidence_root,
+                workspace_root=parent_policy.workspace_root or policy.workspace_root,
+            )
+        params = dict(params) if isinstance(params, dict) else params
         audit = audit or _get_default_audit_log()
         spec = self._specs.get(name)
         if spec is None:
@@ -120,6 +155,12 @@ class ToolRegistry:
             policy.check(level=spec.safety, network=spec.network)
         except SafetyViolation as e:
             out = Observation(name, Status.BLOCKED, "Blocked by safety policy", errors=[str(e)])
+            self._audit(audit, name, params, spec, out, caller)
+            return out
+        try:
+            validate_parameters(params, spec.parameters)
+        except ParameterError as exc:
+            out = Observation(name, Status.ERROR, "Invalid parameters", errors=[str(exc)])
             self._audit(audit, name, params, spec, out, caller)
             return out
         for dep in spec.requires:
@@ -158,26 +199,26 @@ class ToolRegistry:
             # Hand the tool the validated, containment-checked absolute paths so a
             # STATEFUL tool can never act on a raw, attacker-controlled string.
             for pname, ppath in resolved.items():
-                params[pname] = str(ppath)
+                params[pname] = [str(item) for item in ppath] if isinstance(ppath, list) else str(ppath)
         func = self._funcs[name]
+        token = _ACTIVE_POLICY.set(policy)
         try:
+            # Validate the caller's parameters before invoking. A binding
+            # failure (missing required arg / unexpected keyword) is a caller
+            # mistake and is reported as such; any TypeError raised *inside*
+            # the tool body is a tool bug and is reported as an execution
+            # failure by the outer handler. This avoids relying on the
+            # CPython-specific wording of TypeError messages.
             try:
-                out = func(**params)
+                inspect.signature(func).bind(**params)
             except TypeError as e:
-                # A TypeError raised while *binding* the call (missing required
-                # arg / unexpected keyword) means the caller supplied the wrong
-                # parameters. Any TypeError raised *inside* the tool body is a
-                # tool bug and must be reported as an execution failure, never
-                # disguised as a caller mistake.
-                msg = str(e)
-                qual = getattr(func, "__qualname__", "")
-                if msg.startswith(qual + "(") or msg.startswith(
-                    getattr(func, "__name__", "") + "("
-                ):
-                    out = Observation(name, Status.ERROR, "Invalid parameters", errors=[msg])
-                    self._audit(audit, name, params, spec, out, caller)
-                    return out
-                raise
+                out = Observation(
+                    name, Status.ERROR, "Invalid parameters",
+                    errors=[f"parameter binding failed: {e}"],
+                )
+                self._audit(audit, name, params, spec, out, caller)
+                return out
+            out = func(**params)
             if not isinstance(out, Observation):
                 raise TypeError("tool did not return Observation")
             out.meta.setdefault("tool_contract", {
@@ -199,6 +240,8 @@ class ToolRegistry:
             out = Observation(name, Status.ERROR, "Tool execution failed", errors=[f"{type(e).__name__}: {e}"])
             self._audit(audit, name, params, spec, out, caller)
             return out
+        finally:
+            _ACTIVE_POLICY.reset(token)
 
     @staticmethod
     def _audit(
@@ -244,7 +287,7 @@ class ToolRegistry:
             )
             if not sha:
                 continue
-            locator = f"evidence:{ev.locator or ev.path or name}"
+            locator = f"evidence:{ev.locator or ev.source or name}"
             sources.append(
                 prov.add(
                     source_artifact="",

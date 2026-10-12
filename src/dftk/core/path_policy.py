@@ -40,6 +40,7 @@ class PathRole(str, Enum):
 
     EVIDENCE_INPUT = "EVIDENCE_INPUT"      # read-only source; must resolve under evidence_root
     WORKSPACE_OUTPUT = "WORKSPACE_OUTPUT"  # writable derived product; must resolve under workspace_root
+    ANALYSIS_INPUT = "ANALYSIS_INPUT"  # read from evidence or derived workspace
     WORKSPACE_INPUT = "WORKSPACE_INPUT"    # readable input already inside the workspace
 
 
@@ -106,7 +107,20 @@ def validate_path(
     if _is_unc(raw):
         raise PathEscapeError(f"UNC paths are not permitted: {raw!r}")
 
-    resolved = _resolve(Path(raw))
+    if _is_windows_abs(raw) and os.name != "nt":
+        raise PathEscapeError(f"Windows path is outside the local root model: {raw!r}")
+    base = workspace_root if role in (PathRole.WORKSPACE_INPUT, PathRole.WORKSPACE_OUTPUT) else evidence_root
+    candidate = Path(raw)
+    if base is not None and not candidate.is_absolute():
+        candidate = Path(base) / candidate
+    resolved = _resolve(candidate)
+    if role == PathRole.ANALYSIS_INPUT:
+        roots = [Path(root) for root in (evidence_root, workspace_root) if root is not None]
+        if roots and not any(_contained(resolved, root) for root in roots):
+            raise PathEscapeError(f"analysis input escapes evidence and workspace roots: {raw!r}")
+        if roots and not resolved.exists():
+            raise PathEscapeError(f"path does not exist: {raw!r}")
+        return resolved
 
     if role == PathRole.EVIDENCE_INPUT:
         root, must_exist, writable = evidence_root, True, False
@@ -142,17 +156,23 @@ def validate_params(
     *,
     evidence_root: Path | None = None,
     workspace_root: Path | None = None,
-) -> dict[str, Path]:
+) -> dict[str, Path | list[Path]]:
     """Validate every declared path parameter.
 
     Returns a mapping ``param_name -> resolved Path`` so the tool can use the
     pre-checked path directly instead of re-resolving user input.
     """
-    resolved: dict[str, Path] = {}
+    resolved: dict[str, Path | list[Path]] = {}
     for name, role_str in path_roles.items():
         if name not in params:
             continue
         value = params[name]
+        if value is None or value == "":
+            continue  # optional path omitted by the caller
+        if isinstance(value, list):
+            resolved[name] = [validate_path(item, PathRole(role_str), evidence_root=evidence_root,
+                                           workspace_root=workspace_root) for item in value]
+            continue
         if not isinstance(value, str):
             raise PathEscapeError(f"path parameter {name!r} must be a string, got {type(value).__name__}")
         role = PathRole(role_str)

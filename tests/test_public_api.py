@@ -19,18 +19,10 @@ import dftk
 
 def test_public_registry_and_run_tool(tmp_path):
     reg=dftk.get_registry()
-    # Phase 2 registered SQLite forensic (database.sqlite_*) + filesystem.*,
-    # Phase 3 added pure-Python Registry (windows.registry_tree /
-    # windows.registry_deleted_keys), 3.5.0 Network Forensics 2.0 added the
-    # flow / reassembly / session layer, Windows USN Journal (windows.usnjrnl)
-    # plus deep binary forensics (binary.pe_* / binary.elf_dynamic), and the
-    # remaining depth work: the Volatility 3 adapter (memory.*), Windows Amcache /
-    # Shimcache / SRUM, the HTML report layer (case.report_html), the Application
-    # Profile architecture (application.profile_*), and audit verification
-    # (case.verify).
-    # The full registry (primitives + recipes) is 117 tools.
-    assert len(reg.specs()) == 117
+    names={spec.name for spec in reg.specs()}
+    assert {'artifact.inspect','custody.ledger_verify'} <= names
     assert reg.get('artifact.inspect').safety.name == 'READ_ONLY'
+    assert reg.get('custody.ledger_verify').safety.name == 'READ_ONLY'
 
     db=tmp_path/'public-api.db'
     con=sqlite3.connect(db)

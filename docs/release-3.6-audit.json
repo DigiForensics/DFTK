@@ -1,0 +1,1717 @@
+{
+  "version": "3.6.0",
+  "tool_count": 127,
+  "domains": {
+    "android": 7,
+    "application": 2,
+    "archive": 2,
+    "artifact": 1,
+    "binary": 12,
+    "browser": 8,
+    "case": 2,
+    "correlation": 1,
+    "crypto": 3,
+    "custody": 1,
+    "database": 10,
+    "docker": 2,
+    "email": 4,
+    "encoding": 1,
+    "evidence": 1,
+    "file": 4,
+    "filesystem": 6,
+    "image": 3,
+    "linux": 4,
+    "malware": 1,
+    "memory": 6,
+    "network": 8,
+    "recipe": 15,
+    "server": 2,
+    "timeline": 2,
+    "tree": 1,
+    "web": 4,
+    "windows": 14
+  },
+  "safety_counts": {
+    "READ_ONLY": 123,
+    "STATEFUL": 4
+  },
+  "review_scope": "All registered contracts, shared policy/parameter/provenance behavior, and domain regression fixtures. Optional native engines are not certified by schema smoke tests.",
+  "capabilities": [
+    {
+      "name": "android.apk_endpoints",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "android.apk_inventory",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "android.apk_manifest",
+      "parameters": [
+        "path",
+        "include_elements"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "android.apk_search",
+      "parameters": [
+        "path",
+        "query",
+        "regex",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "android.apk_signing_inventory",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "android.appdata_inventory",
+      "parameters": [
+        "root",
+        "max_files"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "android.dex_strings",
+      "parameters": [
+        "path",
+        "contains",
+        "regex",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "application.profile_apply",
+      "parameters": [
+        "path",
+        "profile_id",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "application.profile_list",
+      "parameters": [],
+      "path_roles": {},
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "archive.extract_safe",
+      "parameters": [
+        "path",
+        "output_dir",
+        "member_limit",
+        "total_size_limit",
+        "overwrite"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT",
+        "output_dir": "WORKSPACE_OUTPUT"
+      },
+      "requires": [],
+      "safety": "STATEFUL"
+    },
+    {
+      "name": "archive.inventory",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "artifact.inspect",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.compare",
+      "parameters": [
+        "left",
+        "right",
+        "block_size",
+        "limit",
+        "max_bytes"
+      ],
+      "path_roles": {
+        "left": "EVIDENCE_INPUT",
+        "right": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.elf_dynamic",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.elf_inventory",
+      "parameters": [
+        "path",
+        "strings",
+        "string_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.macho_inventory",
+      "parameters": [
+        "path",
+        "symbol_limit",
+        "command_limit",
+        "max_bytes"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.native_indicator_scan",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.pe_exports",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.pe_headers",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.pe_imports",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.pe_inventory",
+      "parameters": [
+        "path",
+        "strings",
+        "string_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.pe_resources",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.pe_rich_header",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "binary.pe_signing",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "browser.chromium_bookmarks",
+      "parameters": [
+        "path",
+        "limit",
+        "max_bytes",
+        "max_depth"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "browser.chromium_cookies",
+      "parameters": [
+        "path",
+        "include_values",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "browser.chromium_downloads",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "browser.chromium_history",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "browser.chromium_search_terms",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "browser.firefox_bookmarks",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "browser.firefox_cookies",
+      "parameters": [
+        "path",
+        "limit",
+        "include_values"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "browser.firefox_history",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "case.report_html",
+      "parameters": [
+        "output_dir",
+        "observations",
+        "case_id",
+        "title",
+        "audit_log",
+        "name",
+        "timeline_limit"
+      ],
+      "path_roles": {
+        "output_dir": "WORKSPACE_OUTPUT",
+        "audit_log": "WORKSPACE_INPUT"
+      },
+      "requires": [],
+      "safety": "STATEFUL"
+    },
+    {
+      "name": "case.verify",
+      "parameters": [
+        "audit_log",
+        "observations",
+        "manifest"
+      ],
+      "path_roles": {
+        "audit_log": "WORKSPACE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "correlation.entity_graph",
+      "parameters": [
+        "files",
+        "inline",
+        "limit"
+      ],
+      "path_roles": {
+        "files": "ANALYSIS_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "crypto.bip39_scan",
+      "parameters": [
+        "path",
+        "max_files",
+        "max_bytes_per_file",
+        "max_candidates"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "crypto.bip39_validate",
+      "parameters": [
+        "mnemonic"
+      ],
+      "path_roles": {},
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "crypto.entropy_profile",
+      "parameters": [
+        "path",
+        "block_size",
+        "block_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "custody.ledger_verify",
+      "parameters": [
+        "path",
+        "seal",
+        "max_bytes"
+      ],
+      "path_roles": {
+        "path": "ANALYSIS_INPUT",
+        "seal": "ANALYSIS_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sql_dump_inventory",
+      "parameters": [
+        "path",
+        "max_bytes",
+        "statement_limit",
+        "max_line_bytes"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sqlite_deleted_records",
+      "parameters": [
+        "path",
+        "max_bytes",
+        "limit_per_table"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sqlite_forensic_inventory",
+      "parameters": [
+        "path",
+        "max_bytes"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sqlite_freelist",
+      "parameters": [
+        "path",
+        "max_bytes"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sqlite_inventory",
+      "parameters": [
+        "path",
+        "count_rows",
+        "table_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sqlite_pages",
+      "parameters": [
+        "path",
+        "max_bytes",
+        "page_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sqlite_query",
+      "parameters": [
+        "path",
+        "sql",
+        "params",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sqlite_recover",
+      "parameters": [
+        "path",
+        "wal_path",
+        "max_bytes",
+        "limit_per_table"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT",
+        "wal_path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sqlite_search",
+      "parameters": [
+        "path",
+        "query",
+        "case_sensitive",
+        "table_limit",
+        "column_limit",
+        "result_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "database.sqlite_wal",
+      "parameters": [
+        "wal_path",
+        "db_path"
+      ],
+      "path_roles": {
+        "wal_path": "EVIDENCE_INPUT",
+        "db_path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "docker.offline_inventory",
+      "parameters": [
+        "root",
+        "limit"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "docker.offline_logs",
+      "parameters": [
+        "root",
+        "query",
+        "limit"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "email.auth_analyze",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "email.dkim_verify",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "dkimpy",
+        "dnspython"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "email.mime_inventory",
+      "parameters": [
+        "path",
+        "include_body_preview",
+        "preview_chars"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "email.spf_verify",
+      "parameters": [
+        "ip",
+        "mail_from",
+        "helo"
+      ],
+      "path_roles": {},
+      "requires": [
+        "pyspf",
+        "dnspython"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "encoding.decode_candidates",
+      "parameters": [
+        "value",
+        "max_output_bytes"
+      ],
+      "path_roles": {},
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "evidence.intake",
+      "parameters": [
+        "path",
+        "max_files",
+        "inspect_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "file.hash",
+      "parameters": [
+        "path",
+        "algorithms"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "file.search_tree",
+      "parameters": [
+        "path",
+        "query",
+        "regex",
+        "case_sensitive",
+        "max_files",
+        "max_file_size",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "file.strings",
+      "parameters": [
+        "path",
+        "min_length",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "file.strings_unicode",
+      "parameters": [
+        "path",
+        "min_length",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "filesystem.deleted",
+      "parameters": [
+        "path",
+        "partition",
+        "partition_offset",
+        "entry_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "filesystem.extract",
+      "parameters": [
+        "path",
+        "output_dir",
+        "partition",
+        "partition_offset",
+        "path_in_fs",
+        "offset",
+        "length",
+        "name",
+        "max_bytes"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT",
+        "output_dir": "WORKSPACE_OUTPUT"
+      },
+      "requires": [],
+      "safety": "STATEFUL"
+    },
+    {
+      "name": "filesystem.list",
+      "parameters": [
+        "path",
+        "partition",
+        "partition_offset",
+        "path_in_fs",
+        "entry_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "filesystem.read",
+      "parameters": [
+        "path",
+        "partition",
+        "partition_offset",
+        "path_in_fs",
+        "offset",
+        "length",
+        "preview_bytes"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "filesystem.stat",
+      "parameters": [
+        "path",
+        "partition",
+        "partition_offset",
+        "path_in_fs"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "filesystem.walk",
+      "parameters": [
+        "path",
+        "partition",
+        "partition_offset",
+        "path_in_fs",
+        "max_depth",
+        "max_entries",
+        "include_deleted"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "image.e01_filesystem_inventory",
+      "parameters": [
+        "path",
+        "entry_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "pyewf",
+        "pytsk3"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "image.e01_inventory",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "pyewf"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "image.partitions",
+      "parameters": [
+        "path",
+        "sector_size"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "linux.auth_events",
+      "parameters": [
+        "root",
+        "user",
+        "ip",
+        "limit"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "linux.offline_inventory",
+      "parameters": [
+        "root",
+        "account_limit"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "linux.package_events",
+      "parameters": [
+        "root",
+        "package",
+        "limit"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "linux.persistence_inventory",
+      "parameters": [
+        "root",
+        "max_files"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "malware.yara_scan",
+      "parameters": [
+        "path",
+        "rule_file",
+        "rule_text",
+        "max_files",
+        "max_file_size",
+        "match_limit",
+        "timeout"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT",
+        "rule_file": "ANALYSIS_INPUT"
+      },
+      "requires": [
+        "yara-python"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "memory.handles",
+      "parameters": [
+        "image",
+        "timeout",
+        "record_limit"
+      ],
+      "path_roles": {
+        "image": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "volatility"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "memory.malfind",
+      "parameters": [
+        "image",
+        "timeout",
+        "record_limit"
+      ],
+      "path_roles": {
+        "image": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "volatility"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "memory.modules",
+      "parameters": [
+        "image",
+        "timeout",
+        "record_limit"
+      ],
+      "path_roles": {
+        "image": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "volatility"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "memory.network",
+      "parameters": [
+        "image",
+        "timeout",
+        "record_limit"
+      ],
+      "path_roles": {
+        "image": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "volatility"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "memory.processes",
+      "parameters": [
+        "image",
+        "timeout",
+        "record_limit"
+      ],
+      "path_roles": {
+        "image": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "volatility"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "memory.volatility_inventory",
+      "parameters": [
+        "image",
+        "timeout",
+        "record_limit"
+      ],
+      "path_roles": {
+        "image": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "volatility"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "network.capture_protocols",
+      "parameters": [
+        "path",
+        "packet_limit",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "network.dns_transactions",
+      "parameters": [
+        "path",
+        "packet_limit",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "network.flows",
+      "parameters": [
+        "path",
+        "packet_limit",
+        "max_flows"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "network.http_sessions",
+      "parameters": [
+        "path",
+        "output_dir",
+        "packet_limit",
+        "max_sessions",
+        "max_body_bytes"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT",
+        "output_dir": "WORKSPACE_OUTPUT"
+      },
+      "requires": [],
+      "safety": "STATEFUL"
+    },
+    {
+      "name": "network.pcap_inventory",
+      "parameters": [
+        "path",
+        "packet_limit",
+        "sample_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "network.pcapng_inventory",
+      "parameters": [
+        "path",
+        "packet_limit",
+        "sample_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "network.tcp_reassemble",
+      "parameters": [
+        "path",
+        "packet_limit",
+        "max_streams",
+        "max_stream_bytes"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "network.tls_inventory",
+      "parameters": [
+        "path",
+        "packet_limit",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.agent.guided_intake",
+      "parameters": [
+        "path",
+        "objective",
+        "max_steps",
+        "max_files"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.android.appdata_triage",
+      "parameters": [
+        "root",
+        "database_limit"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.android.deep_static_triage",
+      "parameters": [
+        "path",
+        "extra_query"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.android.static_triage",
+      "parameters": [
+        "path",
+        "extra_query"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.artifact.auto_triage",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.browser.history_triage",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.database.triage",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.email.full_offline_triage",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.email.offline_triage",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.network.capture_triage",
+      "parameters": [
+        "path",
+        "packet_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.server.deep_offline_triage",
+      "parameters": [
+        "root",
+        "query"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.server.offline_triage",
+      "parameters": [
+        "root"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.timeline.unified",
+      "parameters": [
+        "root",
+        "extra_sources",
+        "limit"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT",
+        "extra_sources": "ANALYSIS_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.wallet.mnemonic_scan",
+      "parameters": [
+        "path",
+        "max_files"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "recipe.windows.offline_triage",
+      "parameters": [
+        "system_hive",
+        "evtx"
+      ],
+      "path_roles": {
+        "system_hive": "EVIDENCE_INPUT",
+        "evtx": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "server.readonly_inventory",
+      "parameters": [
+        "host",
+        "username",
+        "port",
+        "identity_file",
+        "password_env",
+        "timeout"
+      ],
+      "path_roles": {
+        "identity_file": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "paramiko"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "server.remote_snapshot",
+      "parameters": [
+        "host",
+        "username",
+        "port",
+        "identity_file",
+        "password_env",
+        "timeout",
+        "profile",
+        "max_output_bytes"
+      ],
+      "path_roles": {
+        "identity_file": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "paramiko"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "timeline.file_metadata",
+      "parameters": [
+        "root",
+        "max_files",
+        "limit"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "timeline.merge",
+      "parameters": [
+        "files",
+        "inline",
+        "limit"
+      ],
+      "path_roles": {
+        "files": "ANALYSIS_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "tree.inventory",
+      "parameters": [
+        "root",
+        "max_files",
+        "largest"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "web.access_log_summary",
+      "parameters": [
+        "root",
+        "limit",
+        "sample_limit"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "web.config_candidates",
+      "parameters": [
+        "root",
+        "max_files",
+        "extract_keys"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "web.config_extract",
+      "parameters": [
+        "path",
+        "include_values",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "web.webshell_hunt",
+      "parameters": [
+        "root",
+        "max_files",
+        "max_file_size",
+        "hit_limit",
+        "min_score"
+      ],
+      "path_roles": {
+        "root": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.amcache",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.evtx_hunt",
+      "parameters": [
+        "path",
+        "limit",
+        "event_limit",
+        "query",
+        "event_ids"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "python-evtx"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.evtx_summary",
+      "parameters": [
+        "path",
+        "limit",
+        "sample_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "python-evtx"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.lnk",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.mft",
+      "parameters": [
+        "path",
+        "record_limit",
+        "deleted_only"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.prefetch",
+      "parameters": [
+        "path"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.recyclebin",
+      "parameters": [
+        "path",
+        "find_data"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.registry_deleted_keys",
+      "parameters": [
+        "path",
+        "limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.registry_inventory",
+      "parameters": [
+        "path",
+        "key_limit",
+        "depth"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "python-registry"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.registry_tree",
+      "parameters": [
+        "path",
+        "depth",
+        "key_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.shimcache",
+      "parameters": [
+        "path",
+        "is_hive"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.srum",
+      "parameters": [
+        "path",
+        "table_limit",
+        "row_limit"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "pyesedb"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.usb_artifacts",
+      "parameters": [
+        "system_hive"
+      ],
+      "path_roles": {
+        "system_hive": "EVIDENCE_INPUT"
+      },
+      "requires": [
+        "python-registry"
+      ],
+      "safety": "READ_ONLY"
+    },
+    {
+      "name": "windows.usnjrnl",
+      "parameters": [
+        "path",
+        "mft_path",
+        "record_limit",
+        "reason_filter"
+      ],
+      "path_roles": {
+        "path": "EVIDENCE_INPUT",
+        "mft_path": "EVIDENCE_INPUT"
+      },
+      "requires": [],
+      "safety": "READ_ONLY"
+    }
+  ]
+}

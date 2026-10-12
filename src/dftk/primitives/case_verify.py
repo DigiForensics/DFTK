@@ -140,6 +140,17 @@ def case_verify(audit_log: str, observations: list[dict] | None = None,
                        "detail": f"{len(obs_seq)} observation(s) vs {len(led_seq)} ledger record(s)"})
         if not ok:
             mismatches.append("observation sequence does not match the ledger record sequence")
+        content_ok = len(observations) == len(records)
+        for observation, record in zip(observations, records):
+            expected = record.get("observation_digest")
+            if expected:
+                actual = hashlib.sha256(json.dumps(observation, ensure_ascii=False, sort_keys=True,
+                                                  separators=(",", ":"), default=str).encode()).hexdigest()
+                content_ok = content_ok and expected == actual
+        checks.append({"name": "observation_content", "ok": content_ok,
+                       "detail": "Full observation digests checked where present"})
+        if not content_ok:
+            mismatches.append("observation content differs from the audited result")
 
     # Cross-check a manifest's declared record count.
     if isinstance(manifest, dict) and "record_count" in manifest:

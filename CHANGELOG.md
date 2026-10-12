@@ -2,7 +2,25 @@
 
 All notable public changes to DFTK are recorded here.
 
-## Unreleased
+## 3.6.0 — Integrated capability and verification release
+
+- Repair Python 3.10/3.11 syntax compatibility and the SRUM binding: use pyesedb
+  column objects and bounded record counts, preserve raw typed cells, and avoid
+  guessing timestamps from byte length. Disable implicit YARA file includes.
+- Close immutable SQLite connections on every parser exit, including schema and
+  corruption failures; preserve reserved characters in evidence filenames.
+
+- Integrate both development lines: native recovery/provenance/network parsers and
+  Agent intake, readiness, selftest, YARA/web/EVTX hunts, entity graphs and findings.
+- Apply declared JSON parameter validation, complete host-path roles and inherited
+  recipe policy across all capabilities. Preserve caller arguments; normalize
+  evidence and workspace paths separately, including analysis-input arrays.
+- Add Mach-O/universal structural inventory and streaming binary comparison.
+- Strengthen audit/case integrity: full Observation digests, derived-artifact hashes,
+  legacy-chain compatibility, artifact hashes, finding-content checks and concurrent
+  finding registration. Resolve external readiness through toolchain discovery.
+- Make published manifests independent of runtime optional dependencies. Fix
+  cross-branch parser read contracts and the environment-dependent doctor CI test.
 
 - Add four read-only browser tools: `browser.chromium_bookmarks`,
   `browser.firefox_bookmarks`, `browser.firefox_cookies`, and
@@ -323,6 +341,54 @@ Phase 7 — Windows depth, memory adapter, reporting and profile architecture:
   test injects a fake `Evtx` module; a real-evtx file remains the gold-standard follow-up.
 
 Registry surface is now 113 tools (109 READ_ONLY, 4 STATEFUL) — 99 primitives plus 14 recipes; full suite 232 passed.
+
+## 3.4.0 — Agent-native integration and investigation continuity (2026-08-21)
+
+New:
+
+- Added `dftk agent setup`, the primary Agent bootstrap. It creates a separate case
+  workspace, emits a reviewable portable MCP configuration (including a Codex TOML
+  fragment), and can install the matching DFTK-skill bundle in the same operation.
+  It never overwrites a host's global MCP configuration.
+- Added the Agent-first case controls used by the current DFTK-skill: controlled
+  guided intake, deterministic next actions, bounded case briefs, and entity graphs.
+- Added evidence intake, Windows EVTX hunting, fixed-profile read-only SSH remote
+  snapshots, YARA scanning, and static web-shell hunting capabilities.
+
+Changed:
+
+- Reworked the primary installation and MCP documentation around DFTK as the single
+  Agent entry point and a safe evidence-root / case-workspace boundary.
+
+## Unreleased
+
+New:
+
+- The chain-of-custody audit ledger is now a hash chain. Each record carries `seq`,
+  `prev_hash` and `record_hash` (SHA-256 over the canonical JSON of the record
+  without its own hash), and the position is resolved from the ledger itself, so
+  appends from another process or a later run continue the same chain.
+- Added `dftk audit verify <ledger>`: recomputes the chain and reports edited,
+  deleted, reordered, truncated and downgraded records. Exit code 0 intact,
+  1 defective, 2 unreadable. Verification is read-only.
+- Added `dftk audit seal <ledger>`: writes an external anchor (record count, last
+  record hash, whole-file SHA-256) so deletion from the end of a ledger is
+  detectable; pass it back with `--seal`. A defective ledger refuses to seal.
+- Added the `custody.ledger_verify` capability, the same check as a forensic tool:
+  it returns `facts.verdict` (`intact`/`legacy`/`partial`/`defective`) and cites the
+  ledger as `Evidence`. A negative integrity finding is an examination result, not a
+  tool failure — status stays `ok` and defects are surfaced as warnings.
+- Ledger appends take a cross-process advisory lock shared with the case store
+  (`dftk.core.filelock`), so concurrent writers cannot claim the same `seq`.
+
+Changed:
+
+- CLI runs now return exit code 2 for `unsupported` and `blocked` observations;
+  `ok`/`partial` return 0 and execution errors return 1.
+- The MCP optional dependency accepts the supported `mcp>=2.0.0,<3` range, matching
+  the runtime compatibility check.
+- Skill-bundle tar extraction, SQL dump line buffering, and Chromium download
+  provenance are being hardened for malformed or incomplete evidence.
 
 ## 3.3.0 — Chain-of-custody audit ledger & robustness (2026-08-16)
 

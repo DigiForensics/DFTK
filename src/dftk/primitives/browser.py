@@ -50,6 +50,7 @@ def _tables(con):
 def chromium_history(path:str,limit:int=5000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('browser.chromium_history',Status.ERROR,'History database not found',errors=[str(p)])
+    con = None
     try:
         con=_open_ro(p); tabs=_tables(con)
         if 'urls' not in tabs: con.close(); return Observation('browser.chromium_history',Status.UNSUPPORTED,'Chromium urls table not found',meta={'source_sha256':sha256_file(p)})
@@ -65,6 +66,9 @@ def chromium_history(path:str,limit:int=5000)->Observation:
         con.close()
     except sqlite3.DatabaseError as e:
         return Observation('browser.chromium_history',Status.UNSUPPORTED,'Chromium History parsing failed',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
+    finally:
+        if con is not None:
+            con.close()
     ev=[Evidence(str(p),'browser_visit',r['url'],locator=f"visit:{r.get('visit_id',r.get('url_id'))}",method='Chromium History SQLite') for r in rows[:300]]
     return Observation('browser.chromium_history',Status.OK,f'Recovered {len(rows)} Chromium history row(s)',facts={'visits':rows},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':sha256_file(p)})
 
@@ -74,13 +78,14 @@ def chromium_history(path:str,limit:int=5000)->Observation:
 def chromium_downloads(path:str,limit:int=5000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('browser.chromium_downloads',Status.ERROR,'History database not found',errors=[str(p)])
+    con = None
     try:
         con=_open_ro(p); tabs=_tables(con)
         if 'downloads' not in tabs: con.close(); return Observation('browser.chromium_downloads',Status.UNSUPPORTED,'Chromium downloads table not found',meta={'source_sha256':sha256_file(p)})
         cols={r[1] for r in con.execute('PRAGMA table_info(downloads)')}
         wanted=['id','current_path','target_path','start_time','end_time','received_bytes','total_bytes','state','danger_type','interrupt_reason','tab_url','referrer','site_url','url']
         selected=[c for c in wanted if c in cols]
-        if not selected: con.close(); return Observation('browser.chromium_downloads',Status.UNSUPPORTED,'No known Chromium download columns found')
+        if not selected: con.close(); return Observation('browser.chromium_downloads',Status.UNSUPPORTED,'No known Chromium download columns found',meta={'source_sha256':sha256_file(p)})
         query='SELECT '+','.join('"'+c+'"' for c in selected)+' FROM downloads ORDER BY '+('start_time' if 'start_time' in selected else selected[0])+' DESC LIMIT ?'
         rows=[]
         chains={}
@@ -96,6 +101,9 @@ def chromium_downloads(path:str,limit:int=5000)->Observation:
         con.close()
     except sqlite3.DatabaseError as e:
         return Observation('browser.chromium_downloads',Status.UNSUPPORTED,'Chromium download parsing failed',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
+    finally:
+        if con is not None:
+            con.close()
     ev=[Evidence(str(p),'browser_download',r.get('target_path') or r.get('current_path') or r.get('url_chain') or r.get('url'),locator=f"download:{r.get('id','')}",method='Chromium History SQLite') for r in rows[:300]]
     return Observation('browser.chromium_downloads',Status.OK,f'Recovered {len(rows)} Chromium download row(s)',facts={'downloads':rows},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':sha256_file(p)})
 
@@ -105,6 +113,7 @@ def chromium_downloads(path:str,limit:int=5000)->Observation:
 def firefox_history(path:str,limit:int=5000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('browser.firefox_history',Status.ERROR,'places.sqlite not found',errors=[str(p)])
+    con = None
     try:
         con=_open_ro(p); tabs=_tables(con)
         if not {'moz_places','moz_historyvisits'}.issubset(tabs): con.close(); return Observation('browser.firefox_history',Status.UNSUPPORTED,'Firefox history tables not found',meta={'source_sha256':sha256_file(p)})
@@ -113,6 +122,9 @@ def firefox_history(path:str,limit:int=5000)->Observation:
         con.close()
     except sqlite3.DatabaseError as e:
         return Observation('browser.firefox_history',Status.UNSUPPORTED,'Firefox History parsing failed',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
+    finally:
+        if con is not None:
+            con.close()
     ev=[Evidence(str(p),'browser_visit',r['url'],locator=f"visit:{r['visit_id']}",method='Firefox places.sqlite') for r in rows[:300]]
     return Observation('browser.firefox_history',Status.OK,f'Recovered {len(rows)} Firefox history row(s)',facts={'visits':rows},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':sha256_file(p)})
 
@@ -123,6 +135,7 @@ def chromium_cookies(path:str,include_values:bool=False,limit:int=5000)->Observa
     import hashlib
     p=Path(path)
     if not p.is_file(): return Observation('browser.chromium_cookies',Status.ERROR,'Cookies database not found',errors=[str(p)])
+    con = None
     try:
         con=_open_ro(p); tabs=_tables(con)
         if 'cookies' not in tabs: con.close(); return Observation('browser.chromium_cookies',Status.UNSUPPORTED,'Chromium cookies table not found',meta={'source_sha256':sha256_file(p)})
@@ -145,5 +158,8 @@ def chromium_cookies(path:str,include_values:bool=False,limit:int=5000)->Observa
         con.close()
     except sqlite3.DatabaseError as e:
         return Observation('browser.chromium_cookies',Status.UNSUPPORTED,'Chromium Cookies parsing failed',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
+    finally:
+        if con is not None:
+            con.close()
     ev=[Evidence(str(p),'browser_cookie',f"{r.get('host_key','')} {r.get('name','')}",locator=f"cookie:{i}",method='Chromium Cookies SQLite') for i,r in enumerate(rows[:300])]
     return Observation('browser.chromium_cookies',Status.OK,f'Recovered {len(rows)} Chromium cookie row(s)',facts={'cookies':rows,'include_values':include_values},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':sha256_file(p)})

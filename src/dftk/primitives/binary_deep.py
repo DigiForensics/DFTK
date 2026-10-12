@@ -614,10 +614,10 @@ def pe_headers(path: str) -> Observation:
     p = Path(path)
     if not p.is_file():
         return Observation("binary.pe_headers", Status.ERROR, "PE file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("binary.pe_headers", p, 512 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("binary.pe_headers", p, 512 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     base = parse_pe(data)
     if not base:
         return Observation("binary.pe_headers", Status.UNSUPPORTED, "Not an MZ/PE file", meta={"source_sha256": h})
@@ -667,10 +667,10 @@ def pe_imports(path: str) -> Observation:
     p = Path(path)
     if not p.is_file():
         return Observation("binary.pe_imports", Status.ERROR, "PE file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("binary.pe_imports", p, 512 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("binary.pe_imports", p, 512 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     base = parse_pe(data)
     if not base:
         return Observation("binary.pe_imports", Status.UNSUPPORTED, "Not an MZ/PE file", meta={"source_sha256": h})
@@ -699,10 +699,10 @@ def pe_exports(path: str) -> Observation:
     p = Path(path)
     if not p.is_file():
         return Observation("binary.pe_exports", Status.ERROR, "PE file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("binary.pe_exports", p, 512 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("binary.pe_exports", p, 512 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     base = parse_pe(data)
     if not base:
         return Observation("binary.pe_exports", Status.UNSUPPORTED, "Not an MZ/PE file", meta={"source_sha256": h})
@@ -726,10 +726,10 @@ def pe_resources(path: str) -> Observation:
     p = Path(path)
     if not p.is_file():
         return Observation("binary.pe_resources", Status.ERROR, "PE file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("binary.pe_resources", p, 512 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("binary.pe_resources", p, 512 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     base = parse_pe(data)
     if not base:
         return Observation("binary.pe_resources", Status.UNSUPPORTED, "Not an MZ/PE file", meta={"source_sha256": h})
@@ -756,10 +756,10 @@ def pe_rich_header(path: str) -> Observation:
     p = Path(path)
     if not p.is_file():
         return Observation("binary.pe_rich_header", Status.ERROR, "PE file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("binary.pe_rich_header", p, 512 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("binary.pe_rich_header", p, 512 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     if data[:2] != b"MZ":
         return Observation("binary.pe_rich_header", Status.UNSUPPORTED, "Not an MZ/PE file", meta={"source_sha256": h})
     rich = parse_rich_header(data)
@@ -791,10 +791,10 @@ def pe_signing(path: str) -> Observation:
     p = Path(path)
     if not p.is_file():
         return Observation("binary.pe_signing", Status.ERROR, "PE file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("binary.pe_signing", p, 512 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("binary.pe_signing", p, 512 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     base = parse_pe(data)
     if not base:
         return Observation("binary.pe_signing", Status.UNSUPPORTED, "Not an MZ/PE file", meta={"source_sha256": h})
@@ -1090,10 +1090,10 @@ def elf_dynamic(path: str) -> Observation:
     p = Path(path)
     if not p.is_file():
         return Observation("binary.elf_dynamic", Status.ERROR, "ELF file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("binary.elf_dynamic", p, 512 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("binary.elf_dynamic", p, 512 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
     if data[:4] != b"\x7fELF":
         return Observation("binary.elf_dynamic", Status.UNSUPPORTED, "Not an ELF file", meta={"source_sha256": h})
     try:

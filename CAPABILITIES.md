@@ -1,9 +1,10 @@
-# Capability map — DFTK 3.5.0
+# Capability map — DFTK 3.6.0
 
-The registry contains 117 tools (113 READ_ONLY, 4 STATEFUL) — 103 primitives plus 14 recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
+The registry contains 127 tools (123 READ_ONLY, 4 STATEFUL) — 112 primitives plus 15 recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
 
 ## Artifact and filesystem
 
+- `evidence.intake` — Agent-oriented evidence manifest, bounded SHA-256/magic inspection, and source-linked next-step plan for a file or extracted tree.
 - `artifact.inspect` — magic/container-aware type identification + SHA-256.
 - `tree.inventory` — bounded recursive inventory, extension distribution, largest files.
 - `file.hash` — hashlib-backed cryptographic hashing.
@@ -33,6 +34,12 @@ The registry contains 117 tools (113 READ_ONLY, 4 STATEFUL) — 103 primitives p
 - **Deep PE** (3.5.0): `binary.pe_headers` (DOS/COFF/optional header, data directories, section summary, rich-header presence), `binary.pe_imports` (DLL + imported symbols by name/ordinal, Mandiant-compatible imphash), `binary.pe_exports` (exported symbols + forwarders), `binary.pe_resources` (resource tree walk + embedded manifest extraction), `binary.pe_rich_header` (compiler/toolchain prodid/version/count), `binary.pe_signing` (Authenticode WIN_CERTIFICATE / PKCS#7 with X.509 issuer/subject/validity decoded without external crypto libs; absence of a signature is reported, not assumed malicious).
 - **Deep ELF** (3.5.0): `binary.elf_dynamic` (NEEDED libraries, interpreter, RPATH/RUNPATH, GNU build-id, and the dynamic symbol table resolved from `.dynsym`/`.dynstr`).
 
+## Malware and rule scanning
+
+- YARA rule scanning of one file or a bounded evidence tree, using either a rule
+  file or inline rule source; source hashes, rule metadata, and bounded match
+  offsets are retained without executing the sample.
+
 ## Crypto and encoding
 
 - BIP39 English validation and evidence-tree scanning with checksum verification.
@@ -49,6 +56,9 @@ The registry contains 117 tools (113 READ_ONLY, 4 STATEFUL) — 103 primitives p
 - web/application config candidate discovery and explicit config key/value extraction with secret redaction by default.
 - Nginx/Apache access-log summaries.
 - fixed-command read-only SSH inventory behind network policy.
+- remote SSH forensic snapshot profiles for baseline, incident response, container, and web-server evidence: host key fingerprint, identity, sessions, processes, listeners, routes, systemd, timers, cron, persistence paths, auth-log tail, Docker, and web exposure—without an arbitrary command parameter.
+- bounded WebShell hunting for PHP/JSP/ASP/ASPX/Node/Python source trees, with
+  source hashes and byte offsets for suspicious input-to-execution/obfuscation combinations.
 
 ## Databases
 
@@ -86,6 +96,8 @@ Optional `python-registry` / `python-evtx` capabilities:
 - Pure-Python live key tree (`windows.registry_tree`) and deleted/unreachable key recovery (`windows.registry_deleted_keys`).
 - SYSTEM hive CurrentControlSet USBSTOR and MountedDevices recovery.
 - EVTX provider, EventID and timestamp summaries.
+- Deep EVTX hunting: normalized event timeline plus high-value logon, process,
+  PowerShell, service-install, scheduled-task, audit-clear, and Sysmon triage hits.
 
 Program / execution-context artifacts (3.5.0):
 
@@ -143,9 +155,17 @@ establish local-user attribution or a completed authenticated action.
 
 ## Timeline correlation and case sessions
 
+- `correlation.entity_graph` — source-linked domains, IPs, email addresses, SHA-256 values, and account identifiers across DFTK Observations; includes deterministic co-observation relationships.
 - `timeline.merge` — pure correlation primitive: normalize ISO/epoch timestamps, sort, and attribute events to their source across multiple inputs.
+- `dftk case graph <case_id>` / MCP `dftk_case(action="graph")` — derive the same entity graph directly from persisted Case Observations.
 - `recipe.timeline.unified` — compose a filesystem metadata timeline (and optional extra sources) into one unified timeline.
 - `dftk case` CLI — accumulate read-only tool runs in an isolated workspace (`.dftk/cases/<id>/`) and correlate them: `case new`, `case list`, `case run`, `case timeline`, `case export` (JSON or Markdown). The session only writes under its explicit workspace and never touches source evidence.
+
+## Chain of custody
+
+- `custody.ledger_verify` — recompute the audit ledger's per-record SHA-256 hash chain and report records that were edited, deleted, reordered, truncated or downgraded; optionally compare the ledger against a seal. Read-only. A status of `ok` means the verification ran; read `facts.verdict` for the result.
+- `dftk audit verify <ledger.jsonl> [--seal seal.json]` — the same check from the CLI. Exit 0 intact, 1 defective, 2 unreadable.
+- `dftk audit seal <ledger.jsonl>` — write an external anchor (record count, last record hash, whole-file SHA-256) so deletion from the *end* of a ledger is detectable; a defective ledger refuses to seal.
 
 ## Recipes
 
@@ -181,3 +201,17 @@ establish local-user attribution or a completed authenticated action.
   normalises rows (databases opened read-only). An unmatched schema is reported, not
   guessed. Ships one validated demo profile (generic Android messaging); vendor IM
   parsers become profile *data* in 3.6 rather than bespoke parser code.
+
+## Release-wide execution and verification (3.6)
+
+- Contracts validate declared JSON parameter types, enum values, and explicit bounds before execution. Caller dictionaries are copied.
+- Host paths advertise EVIDENCE_INPUT, WORKSPACE_OUTPUT, WORKSPACE_INPUT, or ANALYSIS_INPUT. ANALYSIS_INPUT reads observations/rules/seals under either evidence or workspace roots; filesystem-internal paths remain opaque.
+- Recipes inherit the parent safety/network/root policy, including child calls that supply a new policy. Directory walks skip symlinks; bounded reads enforce the ceiling on the actual read.
+- Audit records include observation, result, parameter and evidence digests, including derived artifacts. New and legacy chains share verification, locking and sealing.
+- Cases record persisted artifact SHA-256 and evidence-content digests for findings; integrity checking catches value-only edits. Finding registration shares the per-case process/thread lock.
+- Runtime readiness resolves external binaries through the DFTK toolchain. Static manifests omit machine-specific readiness; request `export-manifest --runtime-readiness` for an environment snapshot.
+
+## Mach-O and binary comparison
+
+- `binary.macho_inventory` — thin 32/64-bit, both byte orders, and universal 32/64 architecture tables. Inventory dylibs, rpaths, UUIDs, segments and bounded symbol records. Invalid slice ranges and load commands stay explicit. Code-signature presence does not establish cryptographic validity.
+- `binary.compare` — stream two bounded inputs by fixed byte offsets, calculate each source's SHA-256, and return complete changed-block counts with bounded previews. Insertions may shift later blocks; this is a byte comparison, not semantic equivalence.

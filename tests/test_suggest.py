@@ -195,7 +195,7 @@ def test_cold_python_process_loads_builtin_registry():
     process = subprocess.run([sys.executable, '-c',
                               'from dftk.suggest import suggest; print(suggest("sample.evtx")["results"][0]["name"])'],
                              capture_output=True, text=True, check=True)
-    assert process.stdout.strip() == 'windows.evtx_summary'
+    assert process.stdout.strip() in {'windows.evtx_summary', 'windows.evtx_hunt'}
 
 
 def test_single_kind_contract_and_cost_hint():

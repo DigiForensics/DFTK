@@ -34,7 +34,7 @@ Then create a clean virtual environment and install the generated wheel:
 python -m venv clean-env
 # Windows: clean-env\\Scripts\\activate
 # POSIX:   source clean-env/bin/activate
-pip install dist/dftk-3.3.0-py3-none-any.whl
+pip install dist/dftk-3.4.0-py3-none-any.whl
 dftk --version
 dftk list
 ```
@@ -50,8 +50,8 @@ The included `publish.yml` workflow publishes only for version tags matching `v*
 Typical release:
 
 ```bash
-git tag v3.3.0
-git push origin v3.3.0
+git tag v3.4.0
+git push origin v3.4.0
 ```
 
 The workflow runs tests, builds both wheel and sdist, validates metadata, then publishes using GitHub OIDC / PyPI Trusted Publishing.
@@ -66,8 +66,8 @@ For each release, after tagging DFTK:
 
 ```bash
 cd ../DFTK-skill
-git tag v3.3.0          # same version as the DFTK release
-git push origin main v3.3.0
+git tag v3.4.0          # same version as the DFTK release
+git push origin main v3.4.0
 ```
 
 Verify from a clean environment that `dftk skill --install` succeeds before announcing the release.

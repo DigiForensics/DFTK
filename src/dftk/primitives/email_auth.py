@@ -58,10 +58,10 @@ def _parse_dkim_domains(headers:list[str]):
 def auth_analyze(path:str)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation("email.auth_analyze",Status.ERROR,"EML file not found",errors=[str(p)])
-    raw,err=read_file_bounded_observation('email.auth_analyze',p,256*1024*1024)
+    raw,err,src=read_file_bounded_observation('email.auth_analyze',p,256*1024*1024)
     if err: return err
     try: msg=BytesParser(policy=policy.default).parsebytes(raw)
-    except Exception as e: return Observation("email.auth_analyze",Status.ERROR,"Email parse failed",errors=[str(e)],meta={"source_sha256":sha256_file(p)})
+    except Exception as e: return Observation("email.auth_analyze",Status.ERROR,"Email parse failed",errors=[str(e)],meta={"source_sha256":src})
     from_name,from_addr=parseaddr(_decode(msg.get('From','')))
     sender_name,sender_addr=parseaddr(_decode(msg.get('Sender','')))
     _,reply_addr=parseaddr(_decode(msg.get('Reply-To','')))
@@ -88,7 +88,7 @@ def auth_analyze(path:str)->Observation:
     for i,d in enumerate(dkims): ev.append(Evidence(str(p),'dkim_identifier',d,locator=f'header:DKIM-Signature[{i}]'))
     warnings=[]
     if auth: warnings.append("Authentication-Results is recorded as a claim; trust it only if the receiving authentication service is within the established evidence boundary.")
-    return Observation("email.auth_analyze",Status.OK,"Offline email authentication context extracted",facts=facts,evidence=ev,warnings=warnings,meta={"source_sha256":sha256_file(p)})
+    return Observation("email.auth_analyze",Status.OK,"Offline email authentication context extracted",facts=facts,evidence=ev,warnings=warnings,meta={"source_sha256":src})
 
 @registry.tool(name="email.dkim_verify",description="Verify DKIM signatures using dkimpy and DNS. This is signature verification, not DKIM-Signature repair.",safety=SafetyLevel.READ_ONLY,network=True,requires=('dkimpy','dnspython'),tags=('email','dkim'),produces=('dkim_verification',),
  parameters={"type":"object","properties":{"path":{"type":"string"}},"required":["path"]})
@@ -97,13 +97,13 @@ def dkim_verify(path:str)->Observation:
     if not p.is_file(): return Observation("email.dkim_verify",Status.ERROR,"EML file not found",errors=[str(p)])
     try: import dkim
     except ImportError: return Observation("email.dkim_verify",Status.UNSUPPORTED,"dkimpy is not installed",errors=["install optional dependency: pip install 'dftk[email]'"],meta={"source_sha256":sha256_file(p)})
-    raw,err=read_file_bounded_observation('email.dkim_verify',p,256*1024*1024)
+    raw,err,src=read_file_bounded_observation('email.dkim_verify',p,256*1024*1024)
     if err: return err
     try:
         ok=bool(dkim.verify(raw))
     except Exception as e:
-        return Observation("email.dkim_verify",Status.ERROR,"DKIM verification failed to execute",errors=[f"{type(e).__name__}: {e}"],meta={"source_sha256":sha256_file(p)})
-    return Observation("email.dkim_verify",Status.OK,"DKIM verification completed",facts={"verified":ok},evidence=[Evidence(str(p),'dkim_verification',ok,locator='DKIM-Signature')],meta={"source_sha256":sha256_file(p)})
+        return Observation("email.dkim_verify",Status.ERROR,"DKIM verification failed to execute",errors=[f"{type(e).__name__}: {e}"],meta={"source_sha256":src})
+    return Observation("email.dkim_verify",Status.OK,"DKIM verification completed",facts={"verified":ok},evidence=[Evidence(str(p),'dkim_verification',ok,locator='DKIM-Signature')],meta={"source_sha256":src})
 
 @registry.tool(name="email.spf_verify",description="Evaluate SPF for a supplied sending IP and SMTP envelope identity using pyspf and DNS; it does not infer IP from From headers.",safety=SafetyLevel.READ_ONLY,network=True,requires=('pyspf','dnspython'),tags=('email','spf'),produces=('spf_result',),
  parameters={"type":"object","properties":{"ip":{"type":"string"},"mail_from":{"type":"string"},"helo":{"type":"string"}},"required":["ip","mail_from","helo"]})
@@ -124,10 +124,10 @@ def mime_inventory(path:str,include_body_preview:bool=False,preview_chars:int=10
     import hashlib
     p=Path(path)
     if not p.is_file(): return Observation('email.mime_inventory',Status.ERROR,'Email file not found',errors=[str(p)])
-    data,err=read_file_bounded_observation('email.mime_inventory',p,256*1024*1024)
+    data,err,src=read_file_bounded_observation('email.mime_inventory',p,256*1024*1024)
     if err: return err
     try: msg=BytesParser(policy=policy.default).parsebytes(data)
-    except Exception as e: return Observation('email.mime_inventory',Status.ERROR,'Email parsing failed',errors=[f'{type(e).__name__}: {e}'],meta={'source_sha256':sha256_file(p)})
+    except Exception as e: return Observation('email.mime_inventory',Status.ERROR,'Email parsing failed',errors=[f'{type(e).__name__}: {e}'],meta={'source_sha256':src})
     headers={k:str(v) for k,v in msg.items()}; parts=[]; attachments=[]; ev=[]
     iterable=list(msg.walk()) if msg.is_multipart() else [msg]
     for idx,part in enumerate(iterable):
@@ -141,4 +141,4 @@ def mime_inventory(path:str,include_body_preview:bool=False,preview_chars:int=10
         parts.append(row)
         if filename or disp=='attachment':
             attachments.append(row); ev.append(Evidence(str(p),'email_attachment',filename or f'part-{idx}',locator=f'mime-part:{idx}',note=row['sha256'],method='MIME parser'))
-    return Observation('email.mime_inventory',Status.OK,f'Parsed email with {len(parts)} MIME part(s) and {len(attachments)} attachment(s)',facts={'headers':headers,'parts':parts,'attachments':attachments},evidence=ev,meta={'source_sha256':sha256_file(p)})
+    return Observation('email.mime_inventory',Status.OK,f'Parsed email with {len(parts)} MIME part(s) and {len(attachments)} attachment(s)',facts={'headers':headers,'parts':parts,'attachments':attachments},evidence=ev,meta={'source_sha256':src})

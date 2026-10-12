@@ -33,6 +33,12 @@ def _kind_from_header(p:Path, head:bytes)->tuple[str,float,list[str]]:
                 if 'META-INF/MANIFEST.MF' in names: return 'jar_or_zip',0.92,notes
         except (OSError,zipfile.BadZipFile): notes.append('ZIP signature present but central directory could not be read')
         return kind,conf,notes
+    if head[:4] in (b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xce', b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf'):
+        return 'macho', 1.0, notes
+    if head[:4] in (b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca', b'\xca\xfe\xba\xbf', b'\xbf\xba\xfe\xca'):
+        endian = '>' if head[0] == 0xca else '<'
+        if len(head) >= 8 and 1 <= struct.unpack_from(endian+'I', head, 4)[0] <= 64:
+            return 'macho_universal', 0.95, notes
     if head.startswith(b'dex\n'): return 'dex',1.0,notes
     if head.startswith(b'\x7fELF'): return 'elf',1.0,notes
     if head.startswith(b'SQLite format 3\x00'): return 'sqlite',1.0,notes

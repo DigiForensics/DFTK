@@ -249,8 +249,7 @@ def test_case_timeline_and_mcp_root_policy(tmp_path):
     gateway = DFTKMCPGateway(root=tmp_path)
     reply = gateway.run('browser.chromium_bookmarks', {'path': str(p)})
     assert reply['ok'] and reply['observation']['evidence'][2]['source_sha256']
-    with pytest.raises(ValueError, match='evidence root'):
-        gateway.run('browser.chromium_bookmarks', {'path': '/outside/Bookmarks'})
+    assert not gateway.run('browser.chromium_bookmarks', {'path': '/outside/Bookmarks'})['ok']
 
 
 def test_all_tools_discoverable_and_suggestion_specialists():

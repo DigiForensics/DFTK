@@ -243,10 +243,10 @@ def usnjrnl(path: str, mft_path: str | None = None, record_limit: int = 200000,
     p = Path(path)
     if not p.is_file():
         return Observation("windows.usnjrnl", Status.ERROR, "USN $J file not found", errors=[str(p)])
-    data, err = read_file_bounded_observation("windows.usnjrnl", p, 8 * 1024 * 1024 * 1024)
+    data, err, src = read_file_bounded_observation("windows.usnjrnl", p, 8 * 1024 * 1024 * 1024)
     if err:
         return err
-    h = sha256_file(p)
+    h = src
 
     records, malformed, versions = _parse_usn_records(data, record_limit)
 

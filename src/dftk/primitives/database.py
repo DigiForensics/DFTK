@@ -37,7 +37,8 @@ def _load_bytes(path: str, max_bytes: int = 256 * 1024 * 1024) -> bytes:
 def sqlite_inventory(path:str,count_rows:bool=True,table_limit:int=500)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation("database.sqlite_inventory",Status.ERROR,"SQLite file not found",errors=[str(p)])
-    uri=f"file:{p.resolve().as_posix()}?mode=ro&immutable=1"
+    uri=p.resolve().as_uri() + "?mode=ro&immutable=1"
+    con = None
     try:
         con=sqlite3.connect(uri,uri=True); con.execute('PRAGMA query_only=ON')
         rows=con.execute("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE type IN ('table','view','index','trigger') ORDER BY type,name LIMIT ?",(table_limit,)).fetchall()
@@ -52,6 +53,9 @@ def sqlite_inventory(path:str,count_rows:bool=True,table_limit:int=500)->Observa
         con.close()
     except sqlite3.DatabaseError as e:
         return Observation("database.sqlite_inventory",Status.UNSUPPORTED,"SQLite parsing failed",errors=[str(e)],meta={"source_sha256":sha256_file(p)})
+    finally:
+        if con is not None:
+            con.close()
     return Observation("database.sqlite_inventory",Status.OK,f"SQLite inventory complete: {len(objects)} object(s)",facts={"quick_check":qc,"objects":objects},evidence=ev[:300],meta={"source_sha256":sha256_file(p)})
 
 @registry.tool(name='database.sqlite_query',description='Execute one bounded read-only SELECT/WITH query against SQLite with SQLite authorizer write operations denied.',
@@ -64,11 +68,12 @@ def sqlite_query(path:str,sql:str,params:list|None=None,limit:int=1000)->Observa
     if ';' in stripped: return Observation('database.sqlite_query',Status.BLOCKED,'Only one SQL statement is allowed',errors=['multiple statements are not permitted'])
     first=stripped.split(None,1)[0].lower() if stripped else ''
     if first not in ('select','with'): return Observation('database.sqlite_query',Status.BLOCKED,'Only SELECT/WITH statements are allowed',errors=[f'first token: {first or "<empty>"}'])
-    uri=f"file:{p.resolve().as_posix()}?mode=ro&immutable=1"
+    uri=p.resolve().as_uri() + "?mode=ro&immutable=1"
     allowed={sqlite3.SQLITE_SELECT,sqlite3.SQLITE_READ,sqlite3.SQLITE_FUNCTION}
     if hasattr(sqlite3,'SQLITE_RECURSIVE'): allowed.add(sqlite3.SQLITE_RECURSIVE)
     def auth(action,arg1,arg2,db,trigger):
         return sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY
+    con = None
     try:
         con=sqlite3.connect(uri,uri=True); con.execute('PRAGMA query_only=ON'); con.set_authorizer(auth)
         cur=con.execute(stripped,params or []); cols=[d[0] for d in cur.description or []]
@@ -78,6 +83,9 @@ def sqlite_query(path:str,sql:str,params:list|None=None,limit:int=1000)->Observa
         con.close()
     except sqlite3.DatabaseError as e:
         return Observation('database.sqlite_query',Status.ERROR,'Read-only SQLite query failed',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
+    finally:
+        if con is not None:
+            con.close()
     truncated=len(rows)>limit
     if truncated: rows=rows[:limit]
     return Observation('database.sqlite_query',Status.OK,f'Returned {len(rows)} row(s)',facts={'columns':cols,'rows':rows,'row_count':len(rows)},evidence=[Evidence(str(p),'sqlite_query',stripped,locator='read-only connection',method='SQLite authorizer')],warnings=[f'rows limited to {limit}'] if truncated else [],meta={'source_sha256':sha256_file(p)})
@@ -94,17 +102,23 @@ def _sql_ident(name:str)->str:
 
 @registry.tool(name='database.sql_dump_inventory',description='Inventory generic SQL text dumps (MySQL/PostgreSQL/SQLite-style) for databases, CREATE TABLE statements and INSERT counts without importing the dump.',
  safety=SafetyLevel.READ_ONLY,tags=('database','sql_dump','triage'),produces=('sql_schema','table_activity'),cost_hint='medium',
- parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'statement_limit':{'type':'integer','default':200000}},'required':['path']})
-def sql_dump_inventory(path:str,max_bytes:int=256*1024*1024,statement_limit:int=200000)->Observation:
+ parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'statement_limit':{'type':'integer','default':200000},'max_line_bytes':{'type':'integer','default':1048576}},'required':['path']})
+def sql_dump_inventory(path:str,max_bytes:int=256*1024*1024,statement_limit:int=200000,max_line_bytes:int=1024*1024)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('database.sql_dump_inventory',Status.ERROR,'SQL dump not found',errors=[str(p)])
-    tables={}; databases=[]; inserts={}; scanned=0; statements=0; buf=''; warnings=[]
+    if max_bytes <= 0 or statement_limit <= 0 or max_line_bytes <= 0:
+        return Observation('database.sql_dump_inventory',Status.ERROR,'SQL dump limits must be positive')
+    tables={}; databases=[]; inserts={}; scanned=0; statements=0; buf=''; warnings=[]; line_limited=False
     try:
         with p.open('rb') as f:
             while scanned<max_bytes and statements<statement_limit:
-                raw=f.readline()
+                raw=f.readline(max_line_bytes+1)
                 if not raw: break
                 scanned+=len(raw)
+                if len(raw)>max_line_bytes:
+                    line_limited=True
+                    warnings.append(f'line exceeded {max_line_bytes} bytes; parsing stopped before the remaining line content')
+                    break
                 line=raw.decode('utf-8','replace')
                 if line.lstrip().startswith(('--','#')): continue
                 buf+=line
@@ -130,7 +144,8 @@ def sql_dump_inventory(path:str,max_bytes:int=256*1024*1024,statement_limit:int=
     if statements>=statement_limit: warnings.append(f'statement parsing limited to {statement_limit}')
     rows=[{'table':name,**v} for name,v in sorted(tables.items())]
     ev=[Evidence(str(p),'sql_table',r['table'],locator='SQL text',method='bounded SQL statement inventory') for r in rows[:300]]
-    return Observation('database.sql_dump_inventory',Status.OK,f'Found {len(rows)} table name(s) across {statements} SQL statement(s)',facts={'databases':databases,'tables':rows,'bytes_scanned':scanned,'statements_scanned':statements},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
+    status=Status.PARTIAL if warnings or line_limited else Status.OK
+    return Observation('database.sql_dump_inventory',status,f'Found {len(rows)} table name(s) across {statements} SQL statement(s)',facts={'databases':databases,'tables':rows,'bytes_scanned':scanned,'statements_scanned':statements},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
 
 @registry.tool(name='database.sqlite_search',description='Search bounded SQLite tables/columns for a literal value using immutable read-only access; avoids requiring the Agent to construct schema-specific SQL first.',
  safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','search'),produces=('database_matches',),cost_hint='medium',
@@ -138,7 +153,8 @@ def sql_dump_inventory(path:str,max_bytes:int=256*1024*1024,statement_limit:int=
 def sqlite_search(path:str,query:str,case_sensitive:bool=False,table_limit:int=200,column_limit:int=2000,result_limit:int=1000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('database.sqlite_search',Status.ERROR,'SQLite file not found',errors=[str(p)])
-    uri=f"file:{p.resolve().as_posix()}?mode=ro&immutable=1"; hits=[]; warnings=[]; scanned_cols=0
+    uri=p.resolve().as_uri() + "?mode=ro&immutable=1"; hits=[]; warnings=[]; scanned_cols=0
+    con = None
     try:
         con=sqlite3.connect(uri,uri=True); con.execute('PRAGMA query_only=ON')
         tables=[r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT ?",(table_limit,))]
@@ -165,6 +181,9 @@ def sqlite_search(path:str,query:str,case_sensitive:bool=False,table_limit:int=2
         con.close()
     except sqlite3.DatabaseError as e:
         return Observation('database.sqlite_search',Status.UNSUPPORTED,'SQLite search failed',errors=[str(e)],meta={'source_sha256':sha256_file(p)})
+    finally:
+        if con is not None:
+            con.close()
     if scanned_cols>=column_limit: warnings.append(f'column scan limited to {column_limit}')
     if len(hits)>=result_limit: warnings.append(f'results limited to {result_limit}')
     ev=[Evidence(str(p),'sqlite_match',h['value'],locator=f"table:{h['table']};column:{h['column']};rowid:{h['rowid']}",method='read-only SQLite literal search') for h in hits[:300]]

@@ -22,7 +22,7 @@ import threading
 
 from .catalog import load_builtin_tools
 from . import suggest as _suggest
-from .core.case import CaseError, CaseSession
+from .core.case import CaseError, CaseSession, default_workspace
 from .core.models import SafetyLevel
 from .core.safety import SafetyPolicy
 from .core.registry import registry
@@ -62,6 +62,10 @@ _NON_PATH_TEXT_KEY_RE = re.compile(
     re.I,
 )
 _WINDOWS_ABS_RE = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\)")
+# These are local client-authentication/configuration paths for the fixed SSH
+# collector, not evidence inputs. Keeping them out of --root is necessary when
+# evidence is a read-only mount; Paramiko alone consumes these values.
+_CLIENT_CONFIG_PATH_KEYS = {"identity_file", "known_hosts_file"}
 
 
 def _spec_dict(spec: Any) -> dict[str, Any]:
@@ -76,6 +80,7 @@ def _spec_dict(spec: Any) -> dict[str, Any]:
         "requires": list(spec.requires),
         "deterministic": bool(spec.deterministic),
         "cost_hint": spec.cost_hint,
+        "path_roles": spec.path_roles,
     }
 
 
@@ -186,6 +191,8 @@ def _validate_params(value: Any, *, root: Path, key: str = "") -> None:
         return
     if not isinstance(value, str) or not value:
         return
+    if key in _CLIENT_CONFIG_PATH_KEYS:
+        return
     path_key = bool(_PATH_KEY_RE.search(key))
     non_path_key = bool(_NON_PATH_TEXT_KEY_RE.search(key))
     if non_path_key or _is_url(value):
@@ -266,19 +273,24 @@ class DFTKMCPGateway:
         self,
         *,
         root: str | Path = ".",
-        workspace: str | Path = ".dftk",
+        workspace: str | Path | None = None,
+        allow_workspace_in_root: bool = False,
         max_safety: str = "READ_ONLY",
         allow_network: bool = False,
         timeout_seconds: int = _DEFAULT_TIMEOUT,
         audit: str | Path | bool = False,
     ) -> None:
         self.root = Path(root).expanduser().resolve()
-        self.workspace = Path(workspace).expanduser()
+        self.workspace = Path(workspace).expanduser() if workspace is not None else default_workspace()
         if not self.workspace.is_absolute():
-            self.workspace = self.root / self.workspace
+            self.workspace = Path.cwd() / self.workspace
         self.workspace = self.workspace.resolve(strict=False)
-        if not _within(self.workspace, self.root):
-            raise ValueError("MCP workspace must be inside --root")
+        self.workspace_inside_root = _within(self.workspace, self.root)
+        if self.workspace_inside_root and not allow_workspace_in_root:
+            raise ValueError(
+                "MCP workspace must be outside --root to avoid writing derived data into evidence; "
+                "choose --workspace <writable-case-dir> or explicitly pass --allow-workspace-in-root"
+            )
         max_safety = str(max_safety).upper()
         if max_safety not in {"READ_ONLY", "STATEFUL"}:
             raise ValueError("MCP max safety must be READ_ONLY or STATEFUL")
@@ -312,6 +324,8 @@ class DFTKMCPGateway:
             "transport": "stdio",
             "root": str(self.root),
             "workspace": str(self.workspace),
+            "workspace_inside_root": self.workspace_inside_root,
+            "source_evidence_modified": self.workspace_inside_root,
             "max_safety": self.max_safety,
             "allow_network": self.allow_network,
             "timeout_seconds": self.timeout_seconds,
@@ -415,7 +429,6 @@ class DFTKMCPGateway:
 
     def run(self, name: str, params: dict[str, Any] | None = None, case_id: str | None = None) -> dict[str, Any]:
         params = dict(params or {})
-        _validate_params(params, root=self.root)
         try:
             spec = registry.get(name)
         except KeyError:
@@ -424,6 +437,11 @@ class DFTKMCPGateway:
             return {"ok": False, "status": "blocked", "error": f"capability safety {spec.safety.name} exceeds MCP ceiling {self.max_safety}"}
         if spec.network and not self.allow_network:
             return {"ok": False, "status": "blocked", "error": "network capability is disabled by MCP server policy"}
+        # Declared host paths are checked by their role in the worker. Keep the
+        # conservative guard for undeclared values, excluding inline observations
+        # whose source/locator fields are evidence data rather than host inputs.
+        _validate_params({key: value for key, value in params.items()
+                          if key not in spec.path_roles and key not in {"inline", "observations", "manifest", "path_in_fs"}}, root=self.root)
 
         request: dict[str, Any] = {
             "action": "run",
@@ -455,7 +473,7 @@ class DFTKMCPGateway:
             result["case_run"] = data.get("case_run")
         return _bounded_run_result(result)
 
-    def case(self, action: str, case_id: str | None = None, name: str | None = None, format: str = "json") -> dict[str, Any]:
+    def case(self, action: str, case_id: str | None = None, name: str | None = None, format: str = "json", path: str | None = None, objective: str | None = None, max_steps: int = 2) -> dict[str, Any]:
         session = CaseSession(self.workspace)
         action = str(action or "").lower()
         with self._lock:
@@ -470,12 +488,22 @@ class DFTKMCPGateway:
                 return _bounded({"ok": True, "case": session.show(case_id)})
             if action == "timeline":
                 return _bounded({"ok": True, "observation": session.timeline(case_id).to_dict()})
+            if action == "graph":
+                return _bounded({"ok": True, "observation": session.entity_graph(case_id).to_dict()})
+            if action == "next":
+                return _bounded({"ok": True, "next_actions": session.next_actions(case_id)})
+            if action == "guided_intake":
+                if not path:
+                    raise ValueError("path is required for guided_intake")
+                return _bounded({"ok": True, "guided_intake": session.guided_intake(case_id, path, objective=objective, max_steps=max_steps)})
+            if action == "brief":
+                return _bounded({"ok": True, "brief": session.brief(case_id)})
             if action == "export":
                 if format not in {"json", "md"}:
                     raise ValueError("format must be 'json' or 'md'")
                 text = session.export(case_id, fmt=format)
                 return _bounded({"ok": True, "format": format, "report": text})
-        raise ValueError("case action must be one of: new, list, show, timeline, export")
+        raise ValueError("case action must be one of: new, list, show, guided_intake, next, brief, timeline, graph, export")
 
     def read_case_run(
         self,
@@ -564,9 +592,9 @@ def create_server(gateway: DFTKMCPGateway):
         return _safe("dftk_run", lambda: gateway.run(name=name, params=params, case_id=case_id))
 
     @server.tool()
-    def dftk_case(action: str, case_id: str | None = None, name: str | None = None, format: str = "json") -> dict[str, Any]:
-        """Manage the existing DFTK CaseSession: new, list, show, timeline, or export. Tool execution uses dftk_run with case_id."""
-        return _safe("dftk_case", lambda: gateway.case(action=action, case_id=case_id, name=name, format=format))
+    def dftk_case(action: str, case_id: str | None = None, name: str | None = None, format: str = "json", path: str | None = None, objective: str | None = None, max_steps: int = 2) -> dict[str, Any]:
+        """Manage a Case. guided_intake persists child runs; brief restores Agent context; next, timeline, graph, and export work over persisted runs."""
+        return _safe("dftk_case", lambda: gateway.case(action=action, case_id=case_id, name=name, format=format, path=path, objective=objective, max_steps=max_steps))
 
     @server.tool()
     def dftk_read_case_run(
@@ -594,7 +622,8 @@ def create_server(gateway: DFTKMCPGateway):
 def run_mcp_server(
     *,
     root: str | Path = ".",
-    workspace: str | Path = ".dftk",
+    workspace: str | Path | None = None,
+    allow_workspace_in_root: bool = False,
     max_safety: str = "READ_ONLY",
     allow_network: bool = False,
     timeout_seconds: int = _DEFAULT_TIMEOUT,
@@ -604,6 +633,7 @@ def run_mcp_server(
     gateway = DFTKMCPGateway(
         root=root,
         workspace=workspace,
+        allow_workspace_in_root=allow_workspace_in_root,
         max_safety=max_safety,
         allow_network=allow_network,
         timeout_seconds=timeout_seconds,

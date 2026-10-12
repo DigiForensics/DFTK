@@ -49,6 +49,8 @@ _EXTENSION_KINDS: dict[str, list[str]] = {
     ".db": ["sqlite", "database"],
     ".apk": ["apk", "android", "archive"],
     ".dex": ["dex", "android"],
+    ".dylib": ["macho", "macos", "binary"],
+    ".macho": ["macho", "macos", "binary"],
     ".elf": ["elf", "binary", "linux"],
     ".exe": ["pe", "binary", "windows"],
     ".dll": ["pe", "binary", "windows"],
@@ -128,6 +130,14 @@ _WELLKNOWN: dict[str, list[str]] = {
 # is actually readable, so a planning Agent can still query a not-yet-fetched
 # path. Carved evidence frequently has no extension, so this matters.
 _MAGIC_KINDS: list[tuple[bytes, int, list[str]]] = [
+    (b'\xce\xfa\xed\xfe', 0, ["macho", "macos", "binary"]),
+    (b'\xfe\xed\xfa\xce', 0, ["macho", "macos", "binary"]),
+    (b'\xcf\xfa\xed\xfe', 0, ["macho", "macos", "binary"]),
+    (b'\xfe\xed\xfa\xcf', 0, ["macho", "macos", "binary"]),
+    (b'\xca\xfe\xba\xbe', 0, ["macho", "macos", "binary"]),
+    (b'\xbe\xba\xfe\xca', 0, ["macho", "macos", "binary"]),
+    (b'\xca\xfe\xba\xbf', 0, ["macho", "macos", "binary"]),
+    (b'\xbf\xba\xfe\xca', 0, ["macho", "macos", "binary"]),
     (b"MZ", 0, ["pe", "binary", "windows"]),
     (b"\x7fELF", 0, ["elf", "binary", "linux"]),
     (b"PK\x03\x04", 0, ["archive", "zip"]),
