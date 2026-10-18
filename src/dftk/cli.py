@@ -17,6 +17,8 @@ import argparse
 import json
 import os
 import shutil
+import sys
+import shlex
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -40,17 +42,7 @@ from . import __version__ as TOOLKIT_VERSION  # single source of truth; never ha
 # Known user-level Agent skill directories. `agents` is the generic shared
 # Agent Skills location used by multiple products; product-specific locations
 # are included only where DFTK has a stable directory contract.
-AGENT_SKILL_DIRS = {
-    "workbuddy": ".workbuddy/skills",
-    "codebuddy": ".codebuddy/skills",
-    "kimi": ".kimi-code/skills",
-    "claude": ".claude/skills",
-    "codex": ".codex/skills",
-    "hermes": ".hermes/skills",
-    "agents": ".agents/skills",
-    "cursor": ".cursor/skills",
-    "gemini": ".gemini/skills",
-}
+from .agent_hosts import AGENT_SKILL_DIRS, current_agent_host, skill_base
 
 
 def _primary_input_param(reg, name):
@@ -133,34 +125,11 @@ def _spec_dict(spec):
 def _resolve_targets(spec):
     normalized = (spec or "auto").strip().lower()
     if normalized == "auto":
-        # Prefer an explicit host runtime marker. Falling back to exactly one
-        # existing host directory supports local Agents without requiring users
-        # to know an installation target; ambiguous machines use the portable
-        # AgentSkills directory instead of writing into multiple hosts.
-        # Each Agent host exports a product-specific variable while it drives
-        # DFTK, so the detected host is the one that actually invoked this
-        # command. workbuddy (WORKBUDDY_PRODUCT_NAME / CODEBUDDY_HOST) and
-        # CodeBuddy share the CODEBUDDY_* family with distinct host values;
-        # a substring guards each so a workbuddy-desktop host never resolves to
-        # codebuddy and vice versa. Existing hosts match on presence only.
-        host_markers = [
-            ("workbuddy", "WORKBUDDY_PRODUCT_NAME", "workbuddy"),
-            ("workbuddy", "CODEBUDDY_HOST", "workbuddy"),
-            ("codebuddy", "CODEBUDDY_HOST", "codebuddy"),
-            ("codex", "CODEX_HOME", None),
-            ("claude", "CLAUDE_CODE", None),
-            ("claude", "CLAUDECODE", None),
-            ("cursor", "CURSOR_TRACE_ID", None),
-            ("gemini", "GEMINI_CLI", None),
-        ]
-        for target, name, substring in host_markers:
-            value = os.environ.get(name)
-            if not value:
-                continue
-            if substring is None or substring in value.lower():
-                return [target]
+        host = current_agent_host()
+        if host:
+            return [host]
         home = Path.home()
-        present = [target for target, relative in AGENT_SKILL_DIRS.items() if (home / relative).parent.exists()]
+        present = [target for target, relative in AGENT_SKILL_DIRS.items() if skill_base(target, home).parent.exists()]
         return present if len(present) == 1 else ["agents"]
     if normalized == "all":
         return list(AGENT_SKILL_DIRS.keys())
@@ -216,7 +185,7 @@ def _cmd_skill(args):
     if getattr(args, "dry_run", False):
         _emit({
             "action": "install_dftk_skill",
-            "targets": {target: str(home / AGENT_SKILL_DIRS[target]) for target in targets},
+            "targets": {target: str(skill_base(target, home)) for target in targets},
             "ref": ref or f"v{TOOLKIT_VERSION}",
             "writes": False,
         })
@@ -228,7 +197,7 @@ def _cmd_skill(args):
     try:
         repo_root = fetch_skill_repo(ref)
         for target in targets:
-            base = home / AGENT_SKILL_DIRS[target]
+            base = skill_base(target, home)
             try:
                 installed_all.extend(install_from_repo_root(repo_root, base))
             except Exception as exc:  # noqa: BLE001
@@ -268,26 +237,44 @@ def _agent_mcp_config(args):
         raise ValueError(f"evidence root is not a directory: {root}")
     if root == workspace or root in workspace.parents:
         raise ValueError("workspace must be outside the evidence root")
+    if args.timeout < 1:
+        raise ValueError("timeout must be positive")
+    targets = _resolve_targets(args.target)
+    if not targets:
+        raise ValueError("at least one host target is required")
+    if args.config_out:
+        output = Path(args.config_out).expanduser().resolve()
+        if output == root or root in output.parents:
+            raise ValueError("configuration output must be outside the evidence root")
+    executable = os.path.abspath(sys.executable)
     launch_args = [
-        "mcp", "--root", str(root), "--workspace", str(workspace),
+        "-m", "dftk", "mcp", "--root", str(root), "--workspace", str(workspace),
         "--max-safety", args.max_safety, "--timeout", str(args.timeout),
     ]
     if args.allow_network:
         launch_args.append("--allow-network")
-    if args.audit:
-        launch_args.extend(["--audit", str(Path(args.audit).expanduser().resolve())])
-    json_fragment = {"mcpServers": {"dftk": {"command": "dftk", "args": launch_args}}}
+    audit_path = Path(args.audit).expanduser() if args.audit else workspace / "audit.jsonl"
+    if not audit_path.is_absolute():
+        audit_path = workspace / audit_path
+    audit_path = audit_path.resolve()
+    if audit_path == root or root in audit_path.parents:
+        raise ValueError("audit ledger must be outside the evidence root")
+    launch_args.extend(["--audit", str(audit_path)])
+    json_fragment = {"mcpServers": {"dftk": {"command": executable, "args": launch_args}}}
     toml_args = ", ".join(json.dumps(item) for item in launch_args)
     return {
         "schema_version": "1",
         "toolkit_version": TOOLKIT_VERSION,
-        "host_target": args.target,
+        "host_target": targets[0] if len(targets) == 1 else args.target,
+        "host_targets": targets,
+        "skill_destinations": {target: str(skill_base(target)) for target in targets},
+        "audit_ledger": str(audit_path),
         "evidence_root": str(root),
         "case_workspace": str(workspace),
         "mcp_json": json_fragment,
-        "codex_toml": "[mcp_servers.dftk]\ncommand = \"dftk\"\nargs = [" + toml_args + "]\n",
+        "codex_toml": "[mcp_servers.dftk]\ncommand = " + json.dumps(executable) + "\nargs = [" + toml_args + "]\n",
         "verification": [
-            "dftk mcp --root " + str(root) + " --workspace " + str(workspace) + " --check",
+            shlex.join([executable, *launch_args, "--check"]),
             "Start a new Agent session after importing and approving the MCP entry.",
         ],
         "safety_note": "The server is READ_ONLY by default; only the host owner can raise policy or enable network access.",
@@ -391,6 +378,13 @@ def _cmd_case(args):
     if cmd == "guided-intake":
         try:
             _emit(session.guided_intake(args.case_id, args.path, objective=args.objective, max_steps=args.max_steps))
+        except CaseError as exc:
+            _emit({"error": str(exc)})
+            return 2
+        return 0
+    if cmd == "coverage":
+        try:
+            _emit(session.coverage(args.case_id))
         except CaseError as exc:
             _emit({"error": str(exc)})
             return 2
@@ -738,6 +732,8 @@ def main(argv=None):
     case_guided.add_argument("path")
     case_guided.add_argument("--objective")
     case_guided.add_argument("--max-steps", type=int, default=2)
+    case_coverage = case_sub.add_parser("coverage", help="review run failures, coverage limits, and persisted artifact integrity")
+    case_coverage.add_argument("case_id")
     case_brief = case_sub.add_parser("brief", help="return a bounded Agent-context checkpoint for a Case")
     case_brief.add_argument("case_id")
     case_run = case_sub.add_parser("run", help="run a tool and record its Observation in the case")

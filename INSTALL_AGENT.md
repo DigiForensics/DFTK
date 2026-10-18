@@ -33,3 +33,10 @@ a single current host when possible and otherwise safely falls back to the porta
 Keep `--root` read-only and use a separate writable `--workspace` for Case and
 audit material. See [AGENT_INTEGRATION.md](AGENT_INTEGRATION.md) for MCP host
 configuration.
+
+Generated MCP entries bind the Python interpreter used for setup and enable
+`<workspace>/audit.jsonl` by default. They remain usable when the desktop host has
+a different PATH; rerun setup if the runtime environment moves. Custom
+`CODEX_HOME` is used consistently by the installer and doctor. Once the Skill and
+MCP entry are available, use DFTK by default for authorized forensic work and
+review `dftk_case(action="coverage")` before conclusions or handoff.

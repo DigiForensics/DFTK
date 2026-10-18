@@ -135,7 +135,11 @@ def test_cli_agent_setup_is_reviewable_and_keeps_case_data_outside_evidence(tmp_
         "--dry-run",
     ]) == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["mcp_json"]["mcpServers"]["dftk"]["command"] == "dftk"
+    import sys
+    from pathlib import Path
+    launch = report["mcp_json"]["mcpServers"]["dftk"]
+    assert launch["command"] == str(Path(sys.executable).absolute())
+    assert launch["args"][:3] == ["-m", "dftk", "mcp"]
     assert "[mcp_servers.dftk]" in report["codex_toml"]
     assert report["writes"] == {"workspace": False, "config": False, "skills": False}
     assert not workspace.exists()

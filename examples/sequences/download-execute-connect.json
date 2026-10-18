@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "id": "download-execute-connect",
+      "severity": "high",
+      "group_by": ["host", "user"],
+      "within_seconds": 120,
+      "steps": [
+        {"kind": "download"},
+        {"kind": "execute"},
+        {"kind": "connect"}
+      ]
+    }
+  ],
+  "inline": [
+    {"source": "synthetic-browser", "events": [
+      {"time": "2026-01-01T00:00:00Z", "kind": "download", "host": "workstation-1", "user": "alice", "path": "/tmp/sample"}
+    ]},
+    {"source": "synthetic-host", "events": [
+      {"time": "2026-01-01T00:00:30Z", "kind": "execute", "host": "workstation-1", "user": "alice", "path": "/tmp/sample", "confidence": 0.8},
+      {"time": "2026-01-01T00:01:00Z", "kind": "connect", "host": "workstation-1", "user": "alice", "destination": "192.0.2.10"}
+    ]}
+  ]
+}

@@ -114,6 +114,15 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
         # branches on ok does not mistake an unsupported/error run for success.
         return {"ok": obs_d.get("status") in _SUCCESS_STATUSES, "observation": obs_d}
 
+    if action == "case_guided_intake":
+        session = CaseSession(Path(str(request["workspace"])))
+        result = session.guided_intake(
+            str(request["case_id"]), str(request["path"]),
+            objective=request.get("objective"), max_steps=request.get("max_steps", 2),
+            evidence_root=evidence_root, workspace_root=workspace_root, audit=audit,
+        )
+        return {"ok": result["status"] in _SUCCESS_STATUSES, "guided_intake": result}
+
     if action == "case_run":
         workspace = Path(str(request["workspace"]))
         case_id = str(request["case_id"])

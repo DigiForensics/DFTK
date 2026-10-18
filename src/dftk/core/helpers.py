@@ -14,7 +14,8 @@
 
 from __future__ import annotations
 from pathlib import Path
-import hashlib, os, re
+from dataclasses import dataclass, field, asdict
+import hashlib, os, re, stat
 from typing import Iterable
 
 CHUNK = 1024 * 1024
@@ -46,21 +47,54 @@ def safe_rel(path: Path, root: Path) -> str:
     try: return str(path.relative_to(root))
     except ValueError: return str(path)
 
-def bounded_files(root: Path, *, max_files: int = 10000):
+@dataclass
+class TraversalReport:
+    """Traversal coverage; an exhausted iterator alone does not imply full access."""
+    yielded_files: int = 0
+    skipped_symlinks: int = 0
+    errors: list[str] = field(default_factory=list)
+    truncated: bool = False
+    exhausted: bool = False
+
+    def to_dict(self) -> dict:
+        return {**asdict(self), "complete": self.exhausted and not (
+            self.truncated or self.errors or self.skipped_symlinks)}
+
+
+def bounded_files(root: Path, *, max_files: int = 10000, report: TraversalReport | None = None):
+    report = report if report is not None else TraversalReport()
     if max_files < 1:
+        report.truncated = True
         return
-    n = 0
-    for base, dirs, files in os.walk(root):
-        dirs[:] = sorted(name for name in dirs if not (Path(base) / name).is_symlink())
-        files.sort()
-        for name in files:
+    def onerror(exc):
+        report.errors.append(str(exc))
+    for base, dirs, files in os.walk(root, onerror=onerror):
+        retained = []
+        for name in sorted(dirs):
+            if (Path(base) / name).is_symlink():
+                report.skipped_symlinks += 1
+            else:
+                retained.append(name)
+        dirs[:] = retained
+        for name in sorted(files):
             candidate = Path(base) / name
-            if candidate.is_symlink() or not candidate.is_file():
+            if candidate.is_symlink():
+                report.skipped_symlinks += 1
                 continue
-            yield candidate
-            n += 1
-            if n >= max_files:
+            try:
+                if not stat.S_ISREG(candidate.stat().st_mode):
+                    continue
+            except OSError as exc:
+                report.errors.append(f"{candidate}: {exc}")
+                continue
+            # Look ahead by one regular file to distinguish exactly-at-limit
+            # from genuinely truncated traversal.
+            if report.yielded_files >= max_files:
+                report.truncated = True
                 return
+            report.yielded_files += 1
+            yield candidate
+    report.exhausted = True
 
 # In-memory read ceiling for tools that must load the whole file. Forensic
 # evidence can legitimately be large, but loading multi-GB inputs unconditionally
@@ -113,3 +147,11 @@ def read_file_bounded_observation(name: str, path: str | os.PathLike[str], max_b
                 None)
     source_sha256 = hashlib.sha256(data).hexdigest()
     return data, None, source_sha256
+
+
+def sqlite_immutable_warnings(path: str | Path) -> list[str]:
+    """Immutable engine reads intentionally omit sidecar transaction state."""
+    if any(Path(str(path) + suffix).exists() or Path(str(path) + suffix).is_symlink()
+           for suffix in ("-wal", "-journal")):
+        return ["SQLite sidecar present: immutable mode examines the main DB only; uncheckpointed WAL/rollback state is excluded. Preserve sidecars and inspect database.sqlite_wal/database.sqlite_recover before a negative finding."]
+    return []

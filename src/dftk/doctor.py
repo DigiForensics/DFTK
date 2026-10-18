@@ -26,47 +26,12 @@ from .core.readiness import readiness_summary
 from .core.registry import registry
 
 
-# Host skill directories, kept in sync with cli.AGENT_SKILL_DIRS. Deliberately
-# duplicated: importing cli from doctor would risk an import cycle (cli imports
-# doctor lazily inside _cmd_doctor, but a top-level cli import here would pull the
-# whole CLI module whenever doctor is imported).
-_AGENT_SKILL_DIRS = {
-    "workbuddy": ".workbuddy/skills",
-    "codebuddy": ".codebuddy/skills",
-    "kimi": ".kimi-code/skills",
-    "claude": ".claude/skills",
-    "codex": ".codex/skills",
-    "hermes": ".hermes/skills",
-    "agents": ".agents/skills",
-    "cursor": ".cursor/skills",
-    "gemini": ".gemini/skills",
-}
-
-# (host, env_var, value_substring); substring None means "env var present".
-_HOST_MARKERS = [
-    ("workbuddy", "WORKBUDDY_PRODUCT_NAME", "workbuddy"),
-    ("workbuddy", "CODEBUDDY_HOST", "workbuddy"),
-    ("codebuddy", "CODEBUDDY_HOST", "codebuddy"),
-    ("kimi", "KIMI_CODE_HOST", "kimi"),
-    ("claude", "CLAUDE_CODE", None),
-    ("claude", "CLAUDECODE", None),
-    ("codex", "CODEX_HOME", None),
-    ("hermes", "HERMES_HOST", None),
-    ("agents", "AGENTS_HOST", None),
-    ("cursor", "CURSOR_TRACE_ID", None),
-    ("gemini", "GEMINI_CLI", None),
-]
-
-
-def _current_agent_host() -> str | None:
-    """Best-effort detection of the Agent host driving this dftk invocation."""
-    for host, env_var, substring in _HOST_MARKERS:
-        value = os.environ.get(env_var)
-        if not value:
-            continue
-        if substring is None or substring in value.lower():
-            return host
-    return None
+from .agent_hosts import (
+    AGENT_SKILL_DIRS as _AGENT_SKILL_DIRS,
+    HOST_MARKERS as _HOST_MARKERS,
+    current_agent_host as _current_agent_host,
+    skill_base,
+)
 
 
 def _skill_install_status(home: Path | None = None) -> dict[str, Any]:
@@ -79,10 +44,10 @@ def _skill_install_status(home: Path | None = None) -> dict[str, Any]:
     """
     home = home or Path.home()
     expected_host = _current_agent_host()
-    expected_dir = home / _AGENT_SKILL_DIRS[expected_host] if expected_host else None
+    expected_dir = skill_base(expected_host, home) if expected_host else None
     found_at = []
     for host, relative in _AGENT_SKILL_DIRS.items():
-        if (home / relative / "dftk" / "SKILL.md").exists():
+        if (skill_base(host, home) / "dftk" / "SKILL.md").exists():
             found_at.append(host)
     installed_here = bool(
         expected_dir and (expected_dir / "dftk" / "SKILL.md").exists()

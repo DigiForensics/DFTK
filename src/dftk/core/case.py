@@ -203,7 +203,16 @@ class CaseSession:
         artifact = self._run_artifact_path(case_id, target)
         if not artifact.exists() or not artifact.is_file():
             raise CaseError(f"case run artifact is missing: seq {seq}")
-        return target, json.loads(artifact.read_text(encoding="utf-8"))
+        try:
+            observation = json.loads(artifact.read_text(encoding="utf-8"))
+            if not isinstance(observation, dict) or observation.get("tool") != target.get("tool"):
+                raise ValueError("Observation tool/object does not match the run manifest")
+            for key, expected in (("facts", dict), ("evidence", list), ("warnings", list), ("errors", list)):
+                if key in observation and not isinstance(observation[key], expected):
+                    raise ValueError(f"Observation {key} has an invalid type")
+        except (OSError, ValueError, RecursionError) as exc:
+            raise CaseError(f"case run artifact is unreadable: seq {seq}: {exc}") from exc
+        return target, observation
 
     # -- operations ---------------------------------------------------------
     def _run_with_entry(
@@ -290,6 +299,8 @@ class CaseSession:
         max_safety: str = "READ_ONLY",
         audit: Any = None,
         caller: str | None = None,
+        evidence_root: Any = None,
+        workspace_root: Any = None,
     ) -> Observation:
         obs, _entry = self._run_with_entry(
             case_id,
@@ -299,6 +310,8 @@ class CaseSession:
             max_safety=max_safety,
             audit=audit,
             caller=caller,
+            evidence_root=evidence_root,
+            workspace_root=workspace_root,
         )
         return obs
 
@@ -307,34 +320,26 @@ class CaseSession:
         sources = []
         for run in manifest.get("runs", []):
             artifact_path = self._run_artifact_path(case_id, run)
-            if artifact_path.exists() and artifact_path.is_file():
-                sources.append({"file": str(artifact_path)})
+            sources.append({"file": str(artifact_path)})
         merged = merge_events(sources, limit=limit)
         events = merged["events"]
-        facts = {
-            "case_id": case_id,
-            "events": events,
-            "per_source": merged["per_source"],
-            "span": merged["span"],
-            "skipped": merged["skipped"],
-            "source_count": len(merged["per_source"]),
-        }
-        status = Status.OK if events else Status.PARTIAL
+        facts = {key: value for key, value in merged.items() if key not in {"warnings", "errors"}}
+        facts.update(case_id=case_id, source_count=len(merged["per_source"]))
+        status = Status.OK if events and not merged["warnings"] and not merged["errors"] else Status.PARTIAL
+        if merged["errors"] and not events:
+            status = Status.ERROR
         summary = (
             f"Case {case_id}: merged {len(events)} event(s) "
             f"from {len(merged['per_source'])} source(s)"
         )
-        warnings = (
-            [f"{merged['skipped']} event(s) skipped (no parseable timestamp)"]
-            if merged["skipped"]
-            else []
-        )
+        warnings = merged["warnings"]
         return Observation(
             "case.timeline",
             status,
             summary,
             facts=facts,
             warnings=warnings,
+            errors=merged["errors"],
         )
 
     def entity_graph(self, case_id: str, *, limit: int = 5000) -> Observation:
@@ -360,7 +365,7 @@ class CaseSession:
         """
         manifest = self._manifest(case_id)
         runs = list(manifest.get("runs", []))
-        executed = {(str(run.get("tool")), json.dumps(run.get("params", {}), sort_keys=True, ensure_ascii=False)) for run in runs}
+        executed = {(str(run.get("tool")), json.dumps(run.get("params", {}), sort_keys=True, ensure_ascii=False)): run for run in runs}
         actions: list[dict[str, Any]] = []
         intake: dict[str, Any] | None = None
         for run in reversed(runs):
@@ -368,8 +373,8 @@ class CaseSession:
                 continue
             artifact = self._run_artifact_path(case_id, run)
             try:
-                intake = json.loads(artifact.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+                _, intake = self.read_run(case_id, run["seq"])
+            except CaseError:
                 pass
             break
         if intake is None:
@@ -386,6 +391,13 @@ class CaseSession:
                     continue
                 key = (tool, json.dumps(params, sort_keys=True, ensure_ascii=False))
                 if key in executed:
+                    prior = executed[key]
+                    if prior.get("status") != "ok":
+                        actions.append({"action": "review", "tool": tool, "params": params,
+                                        "run_seq": prior.get("seq"), "status": prior.get("status"),
+                                        "reason": "Previous run was incomplete or failed; inspect its warnings/dependencies before retrying or making a negative finding."})
+                    if len(actions) >= limit:
+                        break
                     continue
                 actions.append({"action": "run", "tool": tool, "params": params, "reason": step.get("reason", "evidence-intake route")})
                 if len(actions) >= limit:
@@ -397,17 +409,20 @@ class CaseSession:
             actions.append({"action": "case", "operation": "timeline", "reason": "Multiple persisted Observations may contain time-bearing events."})
         return {"case_id": case_id, "run_count": len(runs), "actions": actions[:limit], "guidance": "Run only actions that answer the authorized investigation question; recommendations are triage steps, not findings."}
 
-    def guided_intake(self, case_id: str, path: str, *, objective: str | None = None, max_steps: int = 2) -> dict[str, Any]:
+    def guided_intake(self, case_id: str, path: str, *, objective: str | None = None, max_steps: int = 2,
+                      evidence_root: Any = None, workspace_root: Any = None, audit: Any = None) -> dict[str, Any]:
         """Persist an Agent first response as individual, recoverable Case runs.
 
         Unlike the convenience recipe, this Case-native form persists the intake
         and each selected child separately. Agents can therefore page, correlate,
         audit, and resume every action after a context reset.
         """
-        if not 0 <= int(max_steps) <= 5:
+        if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 0 <= max_steps <= 5:
             raise CaseError("max_steps must be between 0 and 5")
         self._manifest(case_id)
-        intake = self.run(case_id, "evidence.intake", {"path": path})
+        run_policy = {"evidence_root": evidence_root, "workspace_root": workspace_root,
+                      "audit": audit, "caller": f"guided_intake:case:{case_id}"}
+        intake = self.run(case_id, "evidence.intake", {"path": path}, **run_policy)
         raw_steps = intake.facts.get("next_steps", []) if isinstance(intake.facts, dict) else []
         steps = [step for step in raw_steps if isinstance(step, dict) and isinstance(step.get("tool"), str) and isinstance(step.get("params"), dict)]
         words = set((objective or "").lower().replace("_", " ").split())
@@ -423,9 +438,53 @@ class CaseSession:
                 deferred.append({**step, "deferred_reason": "capability unavailable"}); continue
             if spec.safety != SafetyLevel.READ_ONLY or spec.network:
                 deferred.append({**step, "deferred_reason": "not eligible for automatic read-only first response"}); continue
-            observation = self.run(case_id, step["tool"], step["params"])
+            observation = self.run(case_id, step["tool"], step["params"], **run_policy)
             executed.append({"tool": step["tool"], "params": step["params"], "reason": step.get("reason", "evidence-intake route"), "status": observation.status.value})
-        return {"case_id": case_id, "intake_status": intake.status.value, "executed_actions": executed, "deferred_actions": deferred, "next_actions": self.next_actions(case_id), "guidance": "Each executed action is persisted as its own Case run. Review results before running deferred actions."}
+        status = intake.status.value
+        if status == "ok" and (deferred or any(action["status"] != "ok" for action in executed)):
+            status = "partial"
+        return {"case_id": case_id, "status": status, "intake_status": intake.status.value,
+                "executed_actions": executed, "deferred_actions": deferred,
+                "next_actions": self.next_actions(case_id),
+                "guidance": "Each executed action is persisted as its own Case run. Review results and coverage before running deferred actions or making conclusions."}
+
+    def coverage(self, case_id: str) -> dict[str, Any]:
+        """Expose operational gaps without asserting investigation completeness."""
+        from collections import Counter
+        manifest = self._manifest(case_id)
+        statuses: Counter[str] = Counter()
+        limitations = []
+        integrity = self.verify(case_id)
+        integrity_by_seq = {check["seq"]: check for check in integrity["artifact_checks"]}
+        for run in manifest.get("runs", []):
+            seq = run.get("seq")
+            try:
+                _, observation = self.read_run(case_id, seq)
+            except CaseError as exc:
+                statuses["unreadable"] += 1
+                limitations.append({"seq": seq, "tool": run.get("tool"),
+                                    "status": "unreadable", "errors": [str(exc)]})
+                continue
+            status = str(observation.get("status", "unknown"))
+            statuses[status] += 1
+            warnings = observation.get("warnings") or []
+            errors = observation.get("errors") or []
+            intake_coverage = (observation.get("facts") or {}).get("coverage", {})
+            if status != "ok" or warnings or errors or not integrity_by_seq[seq]["ok"] or integrity_by_seq[seq]["digest_matches"] is None:
+                limitations.append({"seq": seq, "tool": run.get("tool"), "status": status,
+                                    "warnings": warnings, "errors": errors,
+                                    "artifact_intact": integrity_by_seq[seq]["ok"],
+                                    "digest_verified": integrity_by_seq[seq]["digest_matches"],
+                                    "coverage": intake_coverage})
+        pending = [action for action in self.next_actions(case_id)["actions"] if action["action"] in {"run", "review"}]
+        return {
+            "schema": "dftk.case.coverage/1", "case_id": case_id,
+            "run_count": len(manifest.get("runs", [])), "status_counts": dict(statuses),
+            "assessment": "no_runs" if not statuses else (
+                "limitations_present" if limitations or pending or not integrity["valid"] else "no_recorded_limitations"),
+            "limitations": limitations, "integrity": integrity, "pending_analysis_actions": pending,
+            "guidance": "Operational coverage only. Review each limitation and deferred action against the investigation question; no_recorded_limitations does not establish full acquisition, parser coverage, or absence of activity.",
+        }
 
     def brief(self, case_id: str, *, highlight_limit: int = 20) -> dict[str, Any]:
         """Return a bounded, Agent-context-friendly Case checkpoint."""
@@ -435,8 +494,8 @@ class CaseSession:
         for run in manifest.get("runs", []):
             artifact = self._run_artifact_path(case_id, run)
             try:
-                observation = json.loads(artifact.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+                _, observation = self.read_run(case_id, run["seq"])
+            except CaseError:
                 runs.append({"seq": run.get("seq"), "tool": run.get("tool"), "status": "missing_artifact"})
                 continue
             facts = observation.get("facts") if isinstance(observation.get("facts"), dict) else {}
@@ -445,7 +504,10 @@ class CaseSession:
                 "status": observation.get("status", run.get("status")), "summary": observation.get("summary", ""),
                 "warnings": (observation.get("warnings") or [])[:3], "errors": (observation.get("errors") or [])[:3],
             })
-            for key, label in (("hunt_hits", "hunt_hit"), ("leads", "web_code_lead"), ("matches", "yara_match")):
+            if len(highlights) >= highlight_limit:
+                continue
+            match_label = "sequence_match" if observation.get("tool") == "timeline.hunt_sequences" else "pattern_match"
+            for key, label in (("hunt_hits", "hunt_hit"), ("leads", "web_code_lead"), ("matches", match_label)):
                 value = facts.get(key)
                 if not isinstance(value, list):
                     continue
@@ -455,14 +517,13 @@ class CaseSession:
                         break
                 if len(highlights) >= highlight_limit:
                     break
-            if len(highlights) >= highlight_limit:
-                break
         graph = self.entity_graph(case_id, limit=500)
         shared_entities = [node for node in graph.facts.get("nodes", []) if len(node.get("occurrences", [])) >= 2][:highlight_limit]
         timeline = self.timeline(case_id, limit=10_000)
         return {
             "schema": "dftk.case.brief/1", "case_id": case_id, "name": manifest.get("name"),
-            "run_count": len(runs), "runs": runs, "highlights": highlights,
+            "run_count": len(manifest.get("runs", [])), "runs": runs, "highlights": highlights,
+            "coverage": self.coverage(case_id),
             "shared_entities": shared_entities, "timeline_span": timeline.facts.get("span"),
             "next_actions": self.next_actions(case_id),
             "guidance": "This is a bounded checkpoint, not a final finding. Read the referenced Case run before relying on any highlight.",
@@ -477,6 +538,7 @@ class CaseSession:
                 key: manifest.get(key)
                 for key in ("case_id", "name", "created_at", "runs")
             },
+            "coverage": self.coverage(case_id),
             "timeline": timeline.to_dict(),
             "entity_graph": self.entity_graph(case_id).to_dict(),
         }
@@ -522,8 +584,9 @@ class CaseSession:
         artifacts_ok = all(c["ok"] for c in checks)
 
         ledger_result: dict[str, Any] | None = None
-        if audit_path:
-            ledger_result = ToolAuditLog.verify(audit_path)
+        recorded_audit = audit_path or manifest.get("audit_ledger")
+        if recorded_audit:
+            ledger_result = ToolAuditLog.verify(recorded_audit)
         else:
             default = self._case_dir(case_id) / "audit.jsonl"
             if default.exists():
@@ -791,8 +854,26 @@ def _render_markdown(report: dict) -> str:
         f"- Runs: {len(case.get('runs', []))}",
         "",
     ]
+    coverage = report.get("coverage")
+    if coverage:
+        lines.extend([f"## Operational coverage: {coverage['assessment']}", "", coverage["guidance"], ""])
+        for limitation in coverage["limitations"]:
+            lines.append(f"- Run {limitation['seq']} `{limitation['tool']}`: {limitation['status']}")
+            if limitation.get("artifact_intact") is False:
+                lines.append("  - Persisted artifact integrity check failed")
+            elif limitation.get("digest_verified", True) is None:
+                lines.append("  - Legacy result has no stored digest; limited integrity assurance")
+            for warning in limitation.get("warnings", []) + limitation.get("errors", []):
+                lines.append(f"  - {warning}")
+        for action in coverage.get("pending_analysis_actions", []):
+            lines.append(f"- Pending {action['action']}: `{action['tool']}` — {action['reason']}")
+        lines.append("")
     timeline = report["timeline"]["facts"]
     span = timeline.get("span")
+    lines.append(f"Timeline execution status: {report['timeline']['status']}")
+    for issue in report["timeline"].get("warnings", []) + report["timeline"].get("errors", []):
+        lines.append(f"- Timeline limitation: {issue}")
+    lines.append("")
     if span:
         lines.append(
             f"## Timeline ({timeline['source_count']} source(s), "

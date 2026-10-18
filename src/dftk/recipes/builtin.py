@@ -164,9 +164,7 @@ def unified_timeline(root:str,extra_sources:list[str]|None=None,limit:int=200000
     p=SafetyPolicy()
     fs=registry.run('timeline.file_metadata',{'root':root,'limit':limit},p)
     sources=[{'source':'filesystem','events':fs.facts.get('events',[])}]
-    for f in (extra_sources or []):
-        sources.append({'file':f})
-    merged=registry.run('timeline.merge',{'inline':sources,'limit':limit},p)
+    merged=registry.run('timeline.merge',{'inline':sources,'files':extra_sources or [],'limit':limit},p)
     return aggregate('recipe.timeline.unified',[fs,merged],'Unified timeline built')
 
 
@@ -203,6 +201,9 @@ def agent_guided_intake(path:str,objective:str|None=None,max_steps:int=2,max_fil
     result=aggregate('recipe.agent.guided_intake',children,f'Agent guided intake executed {len(executed)} evidence-derived step(s)')
     result.facts['executed_actions']=executed
     result.facts['deferred_actions']=deferred
+    if deferred:
+        result.status=Status.PARTIAL
+        result.warnings.append(f'{len(deferred)} planned action(s) deferred; initial triage coverage is incomplete')
     result.facts['objective']=objective
     result.facts['guidance']='Review each child Observation before executing deferred actions. This recipe never enables network access or stateful/destructive capabilities.'
     return result

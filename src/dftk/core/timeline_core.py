@@ -21,11 +21,14 @@ place and is trivially unit-testable without touching the registry.
 from __future__ import annotations
 
 import json
+import hashlib
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 DEFAULT_LIMIT = 200_000
+MAX_SOURCE_BYTES = 32 * 1024 * 1024
 
 
 def _to_epoch(ev: dict[str, Any]) -> float | None:
@@ -36,11 +39,11 @@ def _to_epoch(ev: dict[str, Any]) -> float | None:
     UTC). Returns ``None`` when no usable timestamp is present.
     """
     ep = ev.get("epoch")
-    if isinstance(ep, (int, float)):
-        return float(ep)
+    if isinstance(ep, (int, float)) and not isinstance(ep, bool):
+        return float(ep) if math.isfinite(ep) else None
     t = ev.get("time")
-    if isinstance(t, (int, float)):
-        return float(t)
+    if isinstance(t, (int, float)) and not isinstance(t, bool):
+        return float(t) if math.isfinite(t) else None
     if isinstance(t, str):
         s = t.strip()
         if not s:
@@ -65,40 +68,63 @@ def _norm_event(ev: dict[str, Any], source: str) -> dict[str, Any] | None:
     ep = _to_epoch(ev)
     if ep is None:
         return None
+    raw_time = ev.get("time")
+    numeric_epoch = isinstance(ev.get("epoch"), (int, float)) and not isinstance(ev.get("epoch"), bool)
+    time_basis = "unix_seconds"
+    if not numeric_epoch and isinstance(raw_time, str):
+        parsed = datetime.fromisoformat(raw_time.strip().replace("Z", "+00:00"))
+        time_basis = "iso8601_offset" if parsed.tzinfo is not None else "iso8601_assumed_utc"
     conf_raw = ev.get("confidence", 1.0)
     try:
         confidence = float(conf_raw)
     except (TypeError, ValueError):
-        confidence = 1.0
+        confidence = 0.0
+    if not math.isfinite(confidence):
+        confidence = 0.0
     return {
+        **ev,
+        "original_time": ev.get("original_time", raw_time),
+        "time_basis": ev.get("time_basis", time_basis),
         "epoch": ep,
         "time": _iso(ep),
         "source": ev.get("source") or source,
         "kind": ev.get("kind") or ev.get("type") or "event",
         "path": ev.get("path") or "",
         "detail": ev.get("detail") or ev.get("path") or "",
-        "confidence": confidence,
+        "confidence": max(0.0, min(1.0, confidence)),
     }
 
 
-def _events_from_observation_file(path: str) -> tuple[list[dict[str, Any]], str]:
-    """Read a dftk Observation JSON and pull out its time-bearing events.
-
-    Returns ``(events, label)`` where ``label`` is the originating tool name
-    (falling back to the file stem). Tolerates files whose ``facts`` use a
-    different key for the event list.
-    """
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    label = data.get("tool") or Path(path).stem
+def _read_observation(path: str) -> tuple[list[dict[str, Any]], str, str, str, list[str]]:
+    """Hash exactly the bounded bytes parsed, and retain the facts locator."""
+    with Path(path).open("rb") as stream:
+        raw = stream.read(MAX_SOURCE_BYTES + 1)
+    if len(raw) > MAX_SOURCE_BYTES:
+        raise ValueError(f"Observation exceeds {MAX_SOURCE_BYTES} byte input bound")
+    data = json.loads(raw)
+    if not isinstance(data, dict) or not isinstance(data.get("facts", {}), dict):
+        raise ValueError("expected an Observation object with object facts")
+    label = str(data.get("tool") or Path(path).stem)
     facts = data.get("facts") or {}
-    evs = facts.get("events")
-    if isinstance(evs, list):
-        return evs, label
-    for v in facts.values():
-        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
-            if any(("epoch" in x or "time" in x) for x in v):
-                return v, label
-    return [], label
+    digest = hashlib.sha256(raw).hexdigest()
+    warnings = []
+    status = data.get("status")
+    if status is not None and status != "ok":
+        warnings.append(f"{path}: input Observation status={str(status)[:100]}; coverage may be incomplete")
+    if data.get("warnings") or data.get("errors"):
+        warnings.append(f"{path}: input Observation carries warnings/errors; review the original run")
+    if isinstance(facts.get("events"), list):
+        return facts["events"], label, "events", digest, warnings
+    for key, value in facts.items():
+        if isinstance(value, list) and value and all(isinstance(x, dict) for x in value):
+            if any("epoch" in x or "time" in x for x in value):
+                return value, label, str(key), digest, warnings
+    return [], label, "events", digest, warnings
+
+
+def _events_from_observation_file(path: str) -> tuple[list[dict[str, Any]], str]:
+    events, label, _, _, _ = _read_observation(path)
+    return events, label
 
 
 def merge_events(
@@ -115,59 +141,86 @@ def merge_events(
     The result is sorted by timestamp and attributed per source, with a span
     summary and a count of skipped (timestamp-less) events.
     """
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= DEFAULT_LIMIT:
+        raise ValueError(f"limit must be between 1 and {DEFAULT_LIMIT}")
     merged: list[dict[str, Any]] = []
     per_source: dict[str, int] = {}
     skipped = 0
+    scanned = 0
+    errors: list[str] = []
+    warnings: list[str] = []
+    incomplete = False
 
-    for src in sources:
+    for source_index, src in enumerate(sources):
+        if scanned >= DEFAULT_LIMIT:
+            incomplete = True
+            break
         if not isinstance(src, dict):
             skipped += 1
             continue
+        filename, digest, key = "", "", "events"
         if "file" in src and src.get("file"):
+            filename = str(src["file"])
             try:
-                events, label = _events_from_observation_file(src["file"])
-            except Exception:
-                skipped += 1
+                events, label, key, digest, source_warnings = _read_observation(filename)
+                warnings.extend(source_warnings)
+            except (OSError, ValueError, TypeError, RecursionError) as exc:
+                errors.append(f"{filename}: {exc}")
                 continue
         elif "events" in src:
-            label = src.get("source") or "inline"
-            events = src.get("events") or []
+            label = str(src.get("source") or "inline")
+            events = src.get("events")
         elif "time" in src or "epoch" in src or "kind" in src:
-            label = src.get("source") or "inline"
+            label = str(src.get("source") or "inline")
             events = [src]
         else:
             skipped += 1
             continue
-
-        for ev in events:
-            if not isinstance(ev, dict):
-                skipped += 1
-                continue
+        if not isinstance(events, list):
+            errors.append(f"source {source_index}: expected an events array")
+            continue
+        for index, ev in enumerate(events):
+            if scanned >= DEFAULT_LIMIT:
+                incomplete = True
+                break
+            scanned += 1
             try:
-                ne = _norm_event(ev, label)
-            except Exception:
-                skipped += 1
-                continue
+                ne = _norm_event(ev, label) if isinstance(ev, dict) else None
+                if ne is not None:
+                    ne["source"] = str(ne["source"])
+                    ne["kind"] = str(ne["kind"])
+                    ne["path"] = str(ne["path"])
+            except (ValueError, TypeError, OverflowError, OSError):
+                ne = None
             if ne is None:
                 skipped += 1
                 continue
+            # Input reference is independent of event-supplied provenance fields.
+            ne["input_ref"] = {
+                "source": filename or f"inline:{source_index}",
+                "locator": f"facts.{key}[{index}]" if filename else f"events[{index}]",
+                "source_sha256": digest,
+            }
             merged.append(ne)
             per_source[ne["source"]] = per_source.get(ne["source"], 0) + 1
 
     merged.sort(key=lambda e: (e["epoch"], e["source"], e["kind"], e["path"]))
-    if limit and len(merged) > limit:
-        merged = merged[:limit]
-
+    omitted = max(0, len(merged) - limit)
+    merged = merged[:limit]
+    if skipped:
+        warnings.append(f"{skipped} invalid or timestamp-less event/source item(s) skipped")
+    assumed_utc = sum(event.get("time_basis") == "iso8601_assumed_utc" for event in merged)
+    if assumed_utc:
+        warnings.append(f"{assumed_utc} returned event(s) lacked a timezone; UTC was assumed")
+    if omitted:
+        warnings.append(f"output limit reached: {omitted} valid event(s) omitted")
+    if incomplete:
+        warnings.append(f"scan limit reached ({DEFAULT_LIMIT}); remaining input was not examined")
     span = None
     if merged:
-        span = {
-            "earliest": merged[0]["time"],
-            "latest": merged[-1]["time"],
-            "count": len(merged),
-        }
+        span = {"earliest": merged[0]["time"], "latest": merged[-1]["time"], "count": len(merged)}
     return {
-        "events": merged,
-        "per_source": per_source,
-        "span": span,
-        "skipped": skipped,
+        "events": merged, "per_source": per_source, "span": span,
+        "skipped": skipped, "scanned": scanned, "omitted": omitted,
+        "truncated": bool(omitted or incomplete), "errors": errors, "warnings": warnings,
     }

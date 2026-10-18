@@ -89,3 +89,29 @@ print(observation.evidence)
 ```
 
 `dftk.get_registry()` and `dftk.run_tool()` are the public integration points.
+
+## Event chain analysis
+
+Use `timeline.hunt_sequences` to find source-linked event chains with explicit
+entity joins and time windows. The [sequence hunting guide](sequence-hunting.md)
+includes rule semantics, a runnable example, and coverage limitations.
+
+## Agent coverage review
+
+`dftk case --workspace /cases/example coverage <case_id>` (or
+`dftk_case(action="coverage", case_id=...)`) reports operational limitations,
+pending analysis, run status counts, and artifact integrity. The same information
+is included in brief checkpoints and JSON/Markdown exports. The assessment
+`no_recorded_limitations` never certifies full acquisition or absence of activity.
+
+Intake counts successful inspections separately from attempts, labels filename
+hints, and records traversal/access exclusions. Literal file search hashes the
+matched bytes and reports skipped files, read errors, and limits as partial
+coverage. Guided Case intake retains ordinary MCP root, worker, timeout, and audit
+policy for its child calls.
+
+SQLite recovery uses only the valid WAL prefix through the last commit. It exposes
+WAL diagnostics, bounded live record samples, heuristic deleted candidates, and
+unsupported table roots. Immutable database/browser queries explicitly warn when
+sidecars may contain excluded transaction state. See the
+[Agent reliability validation notes](agent-reliability.md).

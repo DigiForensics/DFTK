@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from dftk.core.helpers import bounded_files, safe_rel
+from dftk.core.helpers import bounded_files, safe_rel, TraversalReport
 from dftk.core.models import Evidence, Observation, SafetyLevel, Status
 from dftk.core.registry import registry
 from dftk.core.safety import SafetyPolicy
@@ -27,6 +27,8 @@ def _route(kind: str, path: str, filename: str) -> dict[str, Any] | None:
         return {"tool": "recipe.android.deep_static_triage", "params": {"path": path}, "reason": "Android package"}
     if kind in {"pcap", "pcapng"}:
         return {"tool": "recipe.network.capture_triage", "params": {"path": path}, "reason": "network capture"}
+    if kind == "sqlite_wal":
+        return {"tool": "database.sqlite_wal", "params": {"wal_path": path}, "reason": "SQLite transaction WAL"}
     if kind == "sqlite":
         tool = "recipe.browser.history_triage" if filename.lower() in {"history", "places.sqlite"} else "recipe.database.triage"
         return {"tool": tool, "params": {"path": path}, "reason": "SQLite database"}
@@ -82,18 +84,22 @@ def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200) 
         return Observation("evidence.intake", Status.ERROR, "Limits must be positive integers")
 
     root = source if source.is_dir() else source.parent
-    files = list(bounded_files(source, max_files=max_files)) if source.is_dir() else [source]
+    traversal = TraversalReport()
+    files = list(bounded_files(source, max_files=max_files, report=traversal)) if source.is_dir() else [source]
     extension_counts: Counter[str] = Counter()
     kinds: Counter[str] = Counter()
     candidates: list[dict[str, Any]] = []
     evidence: list[Evidence] = []
     warnings: list[str] = []
     policy = SafetyPolicy()
+    attempted = inspected = failed_stats = 0
+    inspection_failures: list[dict[str, Any]] = []
 
     for index, item in enumerate(files):
         try:
             stat = item.stat()
         except OSError as exc:
+            failed_stats += 1
             warnings.append(f"could not stat {item}: {exc}")
             continue
         extension = item.suffix.lower() or "<none>"
@@ -102,10 +108,15 @@ def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200) 
         row: dict[str, Any] = {
             "path": str(item), "relative_path": safe_rel(item, root), "size": stat.st_size,
             "extension": extension, "kind": hint, "identified": False,
+            "inspected": False, "inspection_status": "not_attempted",
+            "identification_basis": "extension_hint" if hint != "unknown" else "unknown",
         }
         if index < inspect_limit:
+            attempted += 1
             observation = registry.run("artifact.inspect", {"path": str(item)}, policy)
+            row["inspection_status"] = observation.status.value
             if observation.status == Status.OK:
+                inspected += 1
                 detected_kind = observation.facts["kind"]
                 row.update({
                     # A known magic/container signature outranks an extension. For
@@ -114,8 +125,15 @@ def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200) 
                     # EML/EVTX files without pretending the hint is a signature.
                     "kind": detected_kind if detected_kind != "unknown" or hint == "unknown" else hint,
                     "confidence": observation.facts["confidence"],
-                    "sha256": observation.facts["sha256"], "identified": True,
+                    "sha256": observation.facts["sha256"], "inspected": True,
+                    "identified": detected_kind != "unknown",
+                    "identification_basis": "signature" if detected_kind != "unknown" else row["identification_basis"],
                 })
+            else:
+                inspection_failures.append({"path": str(item), "status": observation.status.value,
+                                            "errors": observation.errors, "warnings": observation.warnings})
+                warnings.append(f"inspection failed for {item}: {observation.status.value}")
+            warnings.extend(f"{item}: {warning}" for warning in observation.warnings)
         kind = row["kind"]
         kinds[kind] += 1
         route = _route(kind, str(item), item.name)
@@ -129,8 +147,12 @@ def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200) 
                 confidence=float(row.get("confidence", 0.0)), method="magic/container inspection",
             ))
 
-    if source.is_dir() and len(files) >= max_files:
+    if traversal.truncated:
         warnings.append(f"file traversal limited to {max_files}; intake may not cover the complete tree")
+    if traversal.errors:
+        warnings.append(f"{len(traversal.errors)} traversal error(s); some paths were not inventoried")
+    if traversal.skipped_symlinks:
+        warnings.append(f"{traversal.skipped_symlinks} symlink(s) excluded; linked evidence was not examined")
     if len(files) > inspect_limit:
         warnings.append(f"magic inspection and SHA-256 limited to first {inspect_limit} deterministic path(s)")
 
@@ -145,9 +167,18 @@ def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200) 
             warnings.append("next-step plan limited to 25 calls")
             break
 
+    if len(evidence) > 300:
+        warnings.append("evidence item list limited to 300; full per-file hashes remain in candidates")
+
     facts = {
         "scope": str(source), "scope_type": "directory" if source.is_dir() else "file",
-        "file_count": len(files), "inspected_files": min(len(files), inspect_limit),
+        "file_count": len(files), "inspected_files": inspected,
+        "inspection_attempted": attempted, "inspection_failures": inspection_failures,
+        "coverage": {"traversal": traversal.to_dict() if source.is_dir() else {"complete": True},
+                     "stat_failures": failed_stats, "uninspected_files": len(files) - inspected,
+                     "inspection_complete": inspected == len(files) and not failed_stats,
+                     "plan_truncated": any("next-step plan limited" in warning for warning in warnings),
+                     "evidence_items_omitted": max(0, len(evidence) - 300)},
         "total_size": sum(item["size"] for item in candidates),
         "extension_counts": dict(extension_counts.most_common()), "kind_counts": dict(kinds.most_common()),
         "candidates": candidates, "next_steps": routes,

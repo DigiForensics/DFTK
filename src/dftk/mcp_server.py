@@ -440,8 +440,12 @@ class DFTKMCPGateway:
         # Declared host paths are checked by their role in the worker. Keep the
         # conservative guard for undeclared values, excluding inline observations
         # whose source/locator fields are evidence data rather than host inputs.
+        data_keys = {"inline", "observations", "manifest", "path_in_fs"}
+        if name == "timeline.hunt_sequences":
+            # Exact-match rule values describe recorded paths, never files to open.
+            data_keys.add("rules")
         _validate_params({key: value for key, value in params.items()
-                          if key not in spec.path_roles and key not in {"inline", "observations", "manifest", "path_in_fs"}}, root=self.root)
+                          if key not in spec.path_roles and key not in data_keys}, root=self.root)
 
         request: dict[str, Any] = {
             "action": "run",
@@ -495,7 +499,17 @@ class DFTKMCPGateway:
             if action == "guided_intake":
                 if not path:
                     raise ValueError("path is required for guided_intake")
-                return _bounded({"ok": True, "guided_intake": session.guided_intake(case_id, path, objective=objective, max_steps=max_steps)})
+                request = {
+                    "action": "case_guided_intake", "workspace": str(self.workspace),
+                    "case_id": case_id, "path": path, "objective": objective, "max_steps": max_steps,
+                    "evidence_root": str(self.root), "workspace_root": str(self.workspace),
+                    "max_safety": "READ_ONLY", "allow_network": False,
+                }
+                if self.audit_path is not None:
+                    request["audit"] = str(self.audit_path)
+                return _bounded(self._worker(request))
+            if action == "coverage":
+                return _bounded({"ok": True, "coverage": session.coverage(case_id)})
             if action == "brief":
                 return _bounded({"ok": True, "brief": session.brief(case_id)})
             if action == "export":
@@ -503,7 +517,7 @@ class DFTKMCPGateway:
                     raise ValueError("format must be 'json' or 'md'")
                 text = session.export(case_id, fmt=format)
                 return _bounded({"ok": True, "format": format, "report": text})
-        raise ValueError("case action must be one of: new, list, show, guided_intake, next, brief, timeline, graph, export")
+        raise ValueError("case action must be one of: new, list, show, guided_intake, next, brief, coverage, timeline, graph, export")
 
     def read_case_run(
         self,
@@ -593,7 +607,7 @@ def create_server(gateway: DFTKMCPGateway):
 
     @server.tool()
     def dftk_case(action: str, case_id: str | None = None, name: str | None = None, format: str = "json", path: str | None = None, objective: str | None = None, max_steps: int = 2) -> dict[str, Any]:
-        """Manage a Case. guided_intake persists child runs; brief restores Agent context; next, timeline, graph, and export work over persisted runs."""
+        """Manage a Case. guided_intake persists child runs; brief restores Agent context; next, coverage, timeline, graph, and export work over persisted runs."""
         return _safe("dftk_case", lambda: gateway.case(action=action, case_id=case_id, name=name, format=format, path=path, objective=objective, max_steps=max_steps))
 
     @server.tool()

@@ -100,11 +100,16 @@ dftk skill --install --target all --dry-run
 - [Safety policy](SAFETY.md) — execution levels, network gates, and source-evidence protection.
 - [Toolchain deployment](DEPLOY-TOOLCHAIN.md) — external forensic binaries.
 - [Development guide](docs/development.md) — setup, tests, and contribution workflow.
+- [Agent reliability](docs/agent-reliability.md) — bootstrap, coverage review, SQLite snapshot semantics, and executable validation.
 - [Documentation policy](docs/documentation.md) — ownership, generated data, and translation rules.
+
+Sequence hunting: `timeline.hunt_sequences` correlates ordered events by shared
+entity fields, retaining source hashes, locators, and explicit coverage limits.
+See the [sequence hunting guide](docs/sequence-hunting.md) for a runnable example.
 
 ## Project facts
 
-- **One registry, 127 tools** (123 `READ_ONLY`, 4 `STATEFUL`) — **112 primitives** plus **15 recipes**.
+- **One registry, 128 tools** (124 `READ_ONLY`, 4 `STATEFUL`) — **113 primitives** plus **15 recipes**.
 
 
 - Distribution: `dftk`; Python package: `dftk`; CLI: `dftk`.

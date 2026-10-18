@@ -2,6 +2,28 @@
 
 All notable public changes to DFTK are recorded here.
 
+## Unreleased
+
+- Add `timeline.hunt_sequences`: search ordered event chains (2–8 steps) across
+  persisted Observation JSON and inline bundles, grouped by 1–8 fields inside a
+  positive time window up to seven days. Reuses `timeline.merge` normalization,
+  mutates no source evidence, and adds no runtime dependency. Documented in
+  [docs/sequence-hunting.md](docs/sequence-hunting.md) with a runnable example at
+  `examples/sequences/download-execute-connect.json`.
+- Add `dftk_case(action="coverage")` to report execution limitations, pending
+  analysis, run statuses, and artifact integrity before a negative finding,
+  final report, or handoff. Keep `no_recorded_limitations` scoped to recorded
+  execution history rather than full acquisition.
+- Percent-encode SQLite file URIs so evidence paths containing `?`, `#`, `%`,
+  spaces, and Unicode open the intended file in immutable mode.
+- Add `src/dftk/agent_hosts.py` host detection and `mcp_worker` guard hardening;
+  resolve external readiness through toolchain discovery.
+- Add end-to-end demos (`examples/demos/run_demos.py`) covering SQLite/WAL
+  recovery, raw disk image + MBR extraction, Windows MFT/UsnJrnl/Amcache,
+  PCAP → HTTP → PE triage, and memory-image degradation under an explicit
+  SafetyPolicy, verified through `case.verify`.
+- Stop tracking demo runtime output; regenerate with `run_demos.py`.
+
 ## 3.6.0 — Integrated capability and verification release
 
 - Repair Python 3.10/3.11 syntax compatibility and the SRUM binding: use pyesedb

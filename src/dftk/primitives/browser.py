@@ -18,7 +18,7 @@ from pathlib import Path
 import sqlite3
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Evidence,Status,SafetyLevel
-from dftk.core.helpers import sha256_file
+from dftk.core.helpers import sha256_file, sqlite_immutable_warnings
 
 _CHROME_EPOCH=datetime(1601,1,1,tzinfo=timezone.utc)
 
@@ -70,7 +70,8 @@ def chromium_history(path:str,limit:int=5000)->Observation:
         if con is not None:
             con.close()
     ev=[Evidence(str(p),'browser_visit',r['url'],locator=f"visit:{r.get('visit_id',r.get('url_id'))}",method='Chromium History SQLite') for r in rows[:300]]
-    return Observation('browser.chromium_history',Status.OK,f'Recovered {len(rows)} Chromium history row(s)',facts={'visits':rows},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':sha256_file(p)})
+    warnings=sqlite_immutable_warnings(p)+([f'results limited to {limit}'] if len(rows)>=limit else [])
+    return Observation('browser.chromium_history',Status.PARTIAL if warnings else Status.OK,f'Recovered {len(rows)} Chromium history row(s)',facts={'visits':rows},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
 
 @registry.tool(name='browser.chromium_downloads',description='Read Chromium/Chrome/Edge download records and URL chains from History SQLite in immutable read-only mode.',
  safety=SafetyLevel.READ_ONLY,tags=('browser','chromium','downloads','timeline'),produces=('browser_downloads','timeline'),cost_hint='medium',
@@ -105,7 +106,8 @@ def chromium_downloads(path:str,limit:int=5000)->Observation:
         if con is not None:
             con.close()
     ev=[Evidence(str(p),'browser_download',r.get('target_path') or r.get('current_path') or r.get('url_chain') or r.get('url'),locator=f"download:{r.get('id','')}",method='Chromium History SQLite') for r in rows[:300]]
-    return Observation('browser.chromium_downloads',Status.OK,f'Recovered {len(rows)} Chromium download row(s)',facts={'downloads':rows},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':sha256_file(p)})
+    warnings=sqlite_immutable_warnings(p)+([f'results limited to {limit}'] if len(rows)>=limit else [])
+    return Observation('browser.chromium_downloads',Status.PARTIAL if warnings else Status.OK,f'Recovered {len(rows)} Chromium download row(s)',facts={'downloads':rows},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
 
 @registry.tool(name='browser.firefox_history',description='Read Firefox places.sqlite history visits in immutable read-only mode.',
  safety=SafetyLevel.READ_ONLY,tags=('browser','firefox','history','timeline'),produces=('browser_history','timeline'),cost_hint='medium',
@@ -126,7 +128,8 @@ def firefox_history(path:str,limit:int=5000)->Observation:
         if con is not None:
             con.close()
     ev=[Evidence(str(p),'browser_visit',r['url'],locator=f"visit:{r['visit_id']}",method='Firefox places.sqlite') for r in rows[:300]]
-    return Observation('browser.firefox_history',Status.OK,f'Recovered {len(rows)} Firefox history row(s)',facts={'visits':rows},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':sha256_file(p)})
+    warnings=sqlite_immutable_warnings(p)+([f'results limited to {limit}'] if len(rows)>=limit else [])
+    return Observation('browser.firefox_history',Status.PARTIAL if warnings else Status.OK,f'Recovered {len(rows)} Firefox history row(s)',facts={'visits':rows},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})
 
 @registry.tool(name='browser.chromium_cookies',description='Inventory Chromium/Chrome/Edge Cookies SQLite metadata in immutable read-only mode. Plaintext values are omitted unless include_values=true; encrypted blobs are never decrypted.',
  safety=SafetyLevel.READ_ONLY,tags=('browser','chromium','cookies'),produces=('browser_cookies',),cost_hint='medium',
@@ -162,4 +165,5 @@ def chromium_cookies(path:str,include_values:bool=False,limit:int=5000)->Observa
         if con is not None:
             con.close()
     ev=[Evidence(str(p),'browser_cookie',f"{r.get('host_key','')} {r.get('name','')}",locator=f"cookie:{i}",method='Chromium Cookies SQLite') for i,r in enumerate(rows[:300])]
-    return Observation('browser.chromium_cookies',Status.OK,f'Recovered {len(rows)} Chromium cookie row(s)',facts={'cookies':rows,'include_values':include_values},evidence=ev,warnings=[f'results limited to {limit}'] if len(rows)>=limit else [],meta={'source_sha256':sha256_file(p)})
+    warnings=sqlite_immutable_warnings(p)+([f'results limited to {limit}'] if len(rows)>=limit else [])
+    return Observation('browser.chromium_cookies',Status.PARTIAL if warnings else Status.OK,f'Recovered {len(rows)} Chromium cookie row(s)',facts={'cookies':rows,'include_values':include_values},evidence=ev,warnings=warnings,meta={'source_sha256':sha256_file(p)})

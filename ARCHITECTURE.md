@@ -67,7 +67,7 @@ The ledger is outside the evidence contract. It records run provenance (timestam
 
 The default policy allows only `READ_ONLY` and disallows network traffic. Currently:
 
-- 123 tools are `READ_ONLY` (127 registered in total);
+- 124 tools are `READ_ONLY` (128 registered in total);
 - four tools are `STATEFUL` because they write derived workspace output while leaving the source evidence unchanged: `archive.extract_safe`, `filesystem.extract`, `network.http_sessions` and `case.report_html`;
 - no registered tool is `DESTRUCTIVE`;
 - network-capable tools are separately gated.

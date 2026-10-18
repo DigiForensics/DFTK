@@ -36,5 +36,9 @@ Thumbs.db
 workspace/
 extracted/
 
+# Demo runtime output (regenerate with: python examples/demos/run_demos.py)
+examples/demos/output/
+examples/dftk_report.html
+
 # APPLY_UPDATE.py backups (pre-3.1.0 replaced-file snapshots)
 .dftk-update-backup-*/

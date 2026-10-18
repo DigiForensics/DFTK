@@ -14,10 +14,11 @@
 
 from __future__ import annotations
 from pathlib import Path
+import hashlib
 import sqlite3
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Evidence,Status,SafetyLevel
-from dftk.core.helpers import sha256_file
+from dftk.core.helpers import sha256_file, read_file_bounded, sqlite_immutable_warnings
 from dftk.core.sqlite_forensic import (
     parse_sqlite_header, parse_wal, reconstruct_logical_pages, walk_table_leaves,
     parse_schema, recover_deleted, PAGE_TYPE_NAMES, read_varint,
@@ -26,11 +27,32 @@ from dftk.core.sqlite_forensic import (
 
 def _load_bytes(path: str, max_bytes: int = 256 * 1024 * 1024) -> bytes:
     """Read an evidence file fully, bounded. Returns bytes."""
-    p = Path(path)
-    size = p.stat().st_size
-    if size > max_bytes:
-        raise ValueError(f"file too large for forensic load: {size} > {max_bytes}")
-    return p.read_bytes()
+    data, err = read_file_bounded(path, max_bytes)
+    if err:
+        raise ValueError(f"forensic read failed: {err}")
+    return data
+
+
+def _json_records(value):
+    if isinstance(value, bytes):
+        return {"type": "blob", "hex": value.hex(), "length": len(value)}
+    if isinstance(value, list):
+        return [_json_records(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _json_records(item) for key, item in value.items()}
+    return value
+
+
+def _supported_recovery_tables(schema, pages):
+    supported, unsupported = [], []
+    for table in schema:
+        page = pages.get(table["rootpage"], b"")
+        offset = 100 if table["rootpage"] == 1 else 0
+        if len(page) <= offset or page[offset] not in (5, 13):
+            unsupported.append({"table": table["name"], "reason": "not an available rowid table B-tree (WITHOUT ROWID, virtual, missing, or damaged root)"})
+        else:
+            supported.append(table)
+    return supported, unsupported
 
 @registry.tool(name="database.sqlite_inventory",description="Open SQLite in read-only URI mode and report objects, schemas and optional row counts.",safety=SafetyLevel.READ_ONLY,
  parameters={"type":"object","properties":{"path":{"type":"string"},"count_rows":{"type":"boolean","default":True},"table_limit":{"type":"integer","default":500}},"required":["path"]})
@@ -56,7 +78,11 @@ def sqlite_inventory(path:str,count_rows:bool=True,table_limit:int=500)->Observa
     finally:
         if con is not None:
             con.close()
-    return Observation("database.sqlite_inventory",Status.OK,f"SQLite inventory complete: {len(objects)} object(s)",facts={"quick_check":qc,"objects":objects},evidence=ev[:300],meta={"source_sha256":sha256_file(p)})
+    warnings = sqlite_immutable_warnings(p)
+    if qc != "ok": warnings.append(f"SQLite quick_check: {qc}")
+    if any("row_count_error" in obj for obj in objects): warnings.append("some table counts failed; inspect row_count_error")
+    if len(objects) >= table_limit: warnings.append(f"schema inventory limited to {table_limit} objects")
+    return Observation("database.sqlite_inventory",Status.PARTIAL if warnings else Status.OK,f"SQLite inventory complete: {len(objects)} object(s)",facts={"quick_check":qc,"objects":objects},evidence=ev[:300],warnings=warnings,meta={"source_sha256":sha256_file(p)})
 
 @registry.tool(name='database.sqlite_query',description='Execute one bounded read-only SELECT/WITH query against SQLite with SQLite authorizer write operations denied.',
  safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','query'),produces=('query_rows',),
@@ -88,7 +114,8 @@ def sqlite_query(path:str,sql:str,params:list|None=None,limit:int=1000)->Observa
             con.close()
     truncated=len(rows)>limit
     if truncated: rows=rows[:limit]
-    return Observation('database.sqlite_query',Status.OK,f'Returned {len(rows)} row(s)',facts={'columns':cols,'rows':rows,'row_count':len(rows)},evidence=[Evidence(str(p),'sqlite_query',stripped,locator='read-only connection',method='SQLite authorizer')],warnings=[f'rows limited to {limit}'] if truncated else [],meta={'source_sha256':sha256_file(p)})
+    warnings = sqlite_immutable_warnings(p) + ([f'rows limited to {limit}'] if truncated else [])
+    return Observation('database.sqlite_query',Status.PARTIAL if warnings else Status.OK,f'Returned {len(rows)} row(s)',facts={'columns':cols,'rows':rows,'row_count':len(rows)},evidence=[Evidence(str(p),'sqlite_query',stripped,locator='read-only connection',method='SQLite authorizer')],warnings=warnings,meta={'source_sha256':sha256_file(p)})
 
 import re
 
@@ -153,7 +180,7 @@ def sql_dump_inventory(path:str,max_bytes:int=256*1024*1024,statement_limit:int=
 def sqlite_search(path:str,query:str,case_sensitive:bool=False,table_limit:int=200,column_limit:int=2000,result_limit:int=1000)->Observation:
     p=Path(path)
     if not p.is_file(): return Observation('database.sqlite_search',Status.ERROR,'SQLite file not found',errors=[str(p)])
-    uri=p.resolve().as_uri() + "?mode=ro&immutable=1"; hits=[]; warnings=[]; scanned_cols=0
+    uri=p.resolve().as_uri() + "?mode=ro&immutable=1"; hits=[]; warnings=sqlite_immutable_warnings(p); scanned_cols=0
     con = None
     try:
         con=sqlite3.connect(uri,uri=True); con.execute('PRAGMA query_only=ON')
@@ -234,17 +261,31 @@ def sqlite_pages(path:str,max_bytes:int=256*1024*1024,page_limit:int=100000)->Ob
  parameters={'type':'object','properties':{'wal_path':{'type':'string'},'db_path':{'type':'string'}},'required':['wal_path']})
 def sqlite_wal(wal_path:str,db_path:str='')->Observation:
     wp=Path(wal_path)
-    if not wp.is_file(): return Observation('database.sqlite_wal',Status.ERROR,'WAL file not found',errors=[str(wp)])
-    try: wb=wp.read_bytes()
-    except OSError as e: return Observation('database.sqlite_wal',Status.ERROR,'WAL read failed',errors=[str(e)])
+    try: wb=_load_bytes(str(wp))
+    except (OSError,ValueError) as exc:
+        return Observation('database.sqlite_wal',Status.ERROR,'WAL read failed',errors=[str(exc)])
+    digest=hashlib.sha256(wb).hexdigest()
     try: wal=parse_wal(wb)
-    except ValueError as e: return Observation('database.sqlite_wal',Status.UNSUPPORTED,'Not a WAL file',errors=[str(e)],meta={'source_sha256':sha256_file(wp)})
-    valid=sum(1 for f in wal['frames'] if f['valid'])
+    except ValueError as exc:
+        return Observation('database.sqlite_wal',Status.UNSUPPORTED,'Not a supported WAL file',errors=[str(exc)],meta={'source_sha256':digest})
+    valid=wal['valid_frames']; committed=wal['committed_frame_count']
+    warnings=[]
+    if not wal['header']['header_checksum_valid']: warnings.append('WAL header checksum is invalid')
+    if valid < wal['frame_count']: warnings.append('WAL validation chain failed; frames at/after the first failure are not current evidence')
+    if wal['trailing_bytes']: warnings.append('truncated WAL tail was not parsed')
+    if valid > committed: warnings.append('valid but uncommitted WAL tail is excluded from the current snapshot')
+    if wal['frame_count']>300: warnings.append('frame evidence limited to 300; summary counts cover the bounded input')
     facts={'header':wal['header'],'frame_count':wal['frame_count'],'valid_frames':valid,
-           'committed_frames':sum(1 for f in wal['frames'] if f['commit'])}
+           'committed_frames':sum(1 for f in wal['frames'] if f['commit'] and f['valid']),
+           'committed_frame_count':committed,'last_commit_index':wal['last_commit_index'],
+           'trailing_bytes':wal['trailing_bytes']}
     if db_path: facts['db_sha256']=sha256_file(Path(db_path))
-    ev=[Evidence(str(wp),'wal_frame',f['page_number'],locator=f"frame:{f['index']}",state='LIVE' if f['valid'] else 'PARTIAL') for f in wal['frames'][:300]]
-    return Observation('database.sqlite_wal',Status.OK if valid else Status.PARTIAL,f'Parsed {wal["frame_count"]} WAL frame(s), {valid} valid',facts=facts,evidence=ev,meta={'source_sha256':sha256_file(wp)})
+    ev=[Evidence(str(wp),'wal_frame',f['page_number'],locator=f"frame:{f['index']}",
+                 state='LIVE' if f['valid'] and f['index']<committed else 'PARTIAL',
+                 note='committed snapshot frame' if f['valid'] and f['index']<committed else 'uncommitted or invalid frame')
+        for f in wal['frames'][:300]]
+    return Observation('database.sqlite_wal',Status.PARTIAL if warnings or not valid else Status.OK,
+                       f'Parsed {wal["frame_count"]} WAL frame(s), {valid} valid',facts=facts,evidence=ev,warnings=warnings,meta={'source_sha256':digest})
 
 @registry.tool(name='database.sqlite_freelist',description='Enumerate the SQLite freelist: the trunk chain and every freelist leaf page, comparing against the header total. Freelist pages hold dropped table/record data.',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','freelist'),produces=('freelist'),
  parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
@@ -271,7 +312,7 @@ def sqlite_freelist(path:str,max_bytes:int=256*1024*1024)->Observation:
     return Observation('database.sqlite_freelist',Status.OK,f'Freelist: {len(trunk_pages)} trunk + {len(leaf_pages)} leaf page(s)',facts=facts,meta={'source_sha256':sha256_file(path)})
 
 @registry.tool(name='database.sqlite_deleted_records',description='Carve deleted/candidate records from SQLite unallocated page space, freeblocks and freelist pages. Classifies each as DELETED_CANDIDATE (column count matches the live schema) or CARVED (record-shaped but unmatched).',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','recovery'),produces=('deleted_records'),
- parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'limit_per_table':{'type':'integer','default':200}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
+ parameters={'type':'object','properties':{'path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'limit_per_table':{'type':'integer','default':200,'minimum':1,'maximum':10000}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
 def sqlite_deleted_records(path:str,max_bytes:int=256*1024*1024,limit_per_table:int=200)->Observation:
     try: data=_load_bytes(path,max_bytes)
     except (OSError,ValueError) as e: return Observation('database.sqlite_deleted_records',Status.ERROR,'Cannot read SQLite evidence',errors=[str(e)])
@@ -281,14 +322,15 @@ def sqlite_deleted_records(path:str,max_bytes:int=256*1024*1024,limit_per_table:
     num_pages=len(data)//page_size
     pages={pn:data[(pn-1)*page_size:pn*page_size] for pn in range(1,num_pages+1)}
     schema=parse_schema(pages,page_size,reserved,enc)
-    recovered=recover_deleted(pages,schema,page_size,reserved,enc,limit_per_table)
+    schema,unsupported_tables=_supported_recovery_tables(schema,pages)
+    recovered=_json_records(recover_deleted(pages,schema,page_size,reserved,enc,limit_per_table))
     total=sum(len(r['recovered']) for r in recovered)
     candidates=sum(1 for r in recovered for c in r['recovered'] if c['state']=='DELETED_CANDIDATE')
     ev=[Evidence(str(path),'sqlite_deleted_record',c['columns'],locator=f"table:{r['table']};page:{c['page']};offset:{c['offset']}",state=c['state'],method='byte carving (no sqlite3)') for r in recovered for c in r['recovered'][:200]]
-    return Observation('database.sqlite_deleted_records',Status.PARTIAL if total else Status.OK,f'Recovered {total} deleted/carved record(s) ({candidates} candidate(s))',facts={'tables':len(schema),'per_table':[{'table':r['table'],'live_rows':r['live_rows'],'recovered':len(r['recovered'])} for r in recovered],'samples':[{'table':r['table'],'records':r['recovered'][:20]} for r in recovered]},evidence=ev,warnings=['Carved records are heuristic; not all are genuine deleted rows.'],meta={'source_sha256':sha256_file(path)})
+    return Observation('database.sqlite_deleted_records',Status.PARTIAL if total else Status.OK,f'Recovered {total} deleted/carved record(s) ({candidates} candidate(s))',facts={'tables':len(schema),'unsupported_tables':unsupported_tables,'per_table':[{'table':r['table'],'live_rows':r['live_rows'],'recovered':len(r['recovered'])} for r in recovered],'samples':[{'table':r['table'],'records':r['recovered'][:20]} for r in recovered]},evidence=ev,warnings=['Carved records are heuristic; not all are genuine deleted rows.']+([f'{len(unsupported_tables)} unsupported table(s) excluded from recovery'] if unsupported_tables else []),meta={'source_sha256':sha256_file(path)})
 
-@registry.tool(name='database.sqlite_recover',description='Reconstruct the logical current database by overlaying valid WAL frames onto DB pages, then recover live + deleted records across all tables. The deepest SQLite recovery path.',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','recovery','wal'),produces=('recovered_records'),
- parameters={'type':'object','properties':{'path':{'type':'string'},'wal_path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'limit_per_table':{'type':'integer','default':200}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
+@registry.tool(name='database.sqlite_recover',description='Reconstruct only the last committed valid WAL snapshot; return bounded live storage records, heuristic deleted candidates, WAL diagnostics, and unsupported-table coverage. Source DB/WAL remain unchanged.',safety=SafetyLevel.READ_ONLY,tags=('database','sqlite','recovery','wal'),produces=('recovered_records'),
+ parameters={'type':'object','properties':{'path':{'type':'string'},'wal_path':{'type':'string'},'max_bytes':{'type':'integer','default':268435456},'limit_per_table':{'type':'integer','default':200,'minimum':1,'maximum':10000}},'required':['path'],'x-path-roles':{'path':'EVIDENCE_INPUT'}})
 def sqlite_recover(path:str,wal_path:str='',max_bytes:int=256*1024*1024,limit_per_table:int=200)->Observation:
     try: data=_load_bytes(path,max_bytes)
     except (OSError,ValueError) as e: return Observation('database.sqlite_recover',Status.ERROR,'Cannot read SQLite evidence',errors=[str(e)])
@@ -296,18 +338,49 @@ def sqlite_recover(path:str,wal_path:str='',max_bytes:int=256*1024*1024,limit_pe
     except ValueError as e: return Observation('database.sqlite_recover',Status.UNSUPPORTED,'Not a SQLite database',errors=[str(e)],meta={'source_sha256':sha256_file(path)})
     page_size=hdr['page_size']; reserved=hdr['reserved_bytes_per_page']; enc=hdr['text_encoding']
     wal_bytes=None
-    if wal_path:
-        wp=Path(wal_path)
-        if wp.is_file(): wal_bytes=wp.read_bytes()
-    elif Path(path+'-wal').is_file():
-        wal_bytes=Path(path+'-wal').read_bytes()
-    pages=reconstruct_logical_pages(data,wal_bytes,page_size)
+    wp=Path(wal_path) if wal_path else Path(path+'-wal')
+    warnings=[]
+    if wal_path or wp.exists() or wp.is_symlink():
+        if not wal_path and wp.is_symlink():
+            warnings.append('automatic WAL sidecar is a symlink; not read. Supply an authorized explicit wal_path instead')
+        else:
+            try: wal_bytes=_load_bytes(str(wp),max_bytes)
+            except (OSError,ValueError) as exc:
+                return Observation('database.sqlite_recover',Status.ERROR,'Cannot read requested SQLite WAL',errors=[str(exc)])
+    diagnostics={}
+    pages=reconstruct_logical_pages(data,wal_bytes,page_size,diagnostics=diagnostics)
+    warnings.extend(diagnostics['warnings'])
     schema=parse_schema(pages,page_size,reserved,enc)
-    recovered=recover_deleted(pages,schema,page_size,reserved,enc,limit_per_table)
+    schema,unsupported_tables=_supported_recovery_tables(schema,pages)
+    recovered=_json_records(recover_deleted(pages,schema,page_size,reserved,enc,limit_per_table))
     live_total=sum(r['live_rows'] for r in recovered)
     del_total=sum(len(r['recovered']) for r in recovered)
-    facts={'wal_applied':wal_bytes is not None,'tables':[{'table':r['table'],'live_rows':r['live_rows'],'recovered':len(r['recovered'])} for r in recovered],
+    db_digest=hashlib.sha256(data).hexdigest()
+    wal_digest=hashlib.sha256(wal_bytes).hexdigest() if wal_bytes is not None else ''
+    facts={'wal_applied':diagnostics['applied_frames']>0,'wal_applied_frames':diagnostics['applied_frames'],
+           'wal_diagnostics':{key:value for key,value in diagnostics.items() if key!='page_sources'},
+           'tables':[{'table':r['table'],'live_rows':r['live_rows'],'recovered':len(r['recovered'])} for r in recovered],
            'live_total':live_total,'recovered_total':del_total,
-           'samples':[{'table':r['table'],'records':r['recovered'][:20]} for r in recovered]}
-    ev=[Evidence(str(path),'sqlite_recovered',c['columns'],locator=f"table:{r['table']};page:{c['page']};offset:{c['offset']}",state=c['state'],method='WAL overlay + carving') for r in recovered for c in r['recovered'][:200]]
-    return Observation('database.sqlite_recover',Status.PARTIAL if del_total else Status.OK,f'Recovered: {live_total} live + {del_total} deleted/carved record(s)',facts=facts,evidence=ev,warnings=['Carved records are heuristic.'],meta={'source_sha256':sha256_file(path),'wal_sha256':sha256_file(Path(wal_path)) if wal_path and Path(wal_path).is_file() else ''})
+           'samples':[{'table':r['table'],'records':r['recovered'][:20]} for r in recovered],
+           'live_samples':[{'table':r['table'],'records':r['live_records']} for r in recovered],
+           'unsupported_tables':unsupported_tables,'live_total_scope':'supported rowid-table B-trees only'}
+    ev=[]
+    for result in recovered:
+        for record in result['live_records'] + result['recovered'][:200]:
+            wal_ref=diagnostics['page_sources'].get(record['page'])
+            locator=f"table:{result['table']};page:{record['page']};"+(f"offset:{record['offset']}" if 'offset' in record else f"rowid:{record['rowid']}")
+            if wal_ref: locator=f"frame:{wal_ref['frame_index']};"+locator
+            ev.append(Evidence(str(wp) if wal_ref else str(path),'sqlite_live_record' if record['state']=='LIVE' else 'sqlite_recovered',record['columns'],
+                               source_sha256=wal_digest if wal_ref else db_digest,
+                               locator=locator,state=record['state'],method='committed WAL overlay + carving',
+                               note='record start page attribution; database and WAL hashes identify reconstruction inputs'))
+    if unsupported_tables: warnings.append(f'{len(unsupported_tables)} unsupported table(s) excluded; counts do not cover them')
+    if any(r['live_rows']>len(r['live_records']) for r in recovered):
+        warnings.append(f'live record samples limited to {limit_per_table} per table; live_total counts all decoded supported rows')
+    warnings.append('Carved records are heuristic; a zero result does not prove deleted data is absent. Recovery samples show at most 20 candidates per table.')
+    if any(len(r['recovered'])>=limit_per_table for r in recovered):
+        warnings.append(f'recovery candidate limit reached ({limit_per_table} per table)')
+    return Observation('database.sqlite_recover',Status.PARTIAL,
+                       f'Recovered: {live_total} live + {del_total} deleted/carved record(s)',
+                       facts=facts,evidence=ev,warnings=warnings,
+                       meta={'source_sha256':db_digest,'wal_sha256':wal_digest,'wal_path':str(wp) if wal_bytes is not None else ''})

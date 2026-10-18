@@ -85,9 +85,9 @@ def serial_type_value(st: int, data: bytes, off: int, encoding: int) -> Any:
     if st == 0:
         return None
     if st == 8:
-        return b""
+        return 0
     if st == 9:
-        return ""
+        return 1
     if 1 <= st <= 6:
         # Serial types 5 and 6 are 6- and 8-byte integers, NOT 5 and 6 bytes.
         n = st if st <= 4 else (6 if st == 5 else 8)
@@ -147,6 +147,8 @@ def parse_sqlite_header(data: bytes) -> dict[str, Any]:
     page_size = int.from_bytes(data[16:18], "big")
     if page_size == 1:
         page_size = 65536
+    if page_size < 512 or page_size > 65536 or page_size & (page_size - 1):
+        raise ValueError("invalid SQLite page size")
     enc = int.from_bytes(data[56:60], "big")
     return {
         "magic": "SQLite format 3",
@@ -235,6 +237,10 @@ def parse_wal(wal_bytes: bytes) -> dict[str, Any]:
     # All header/data integers are big-endian (written via sqlite3Put4byte).
     format_version = struct.unpack(">I", wal_bytes[4:8])[0]
     page_size = struct.unpack(">I", wal_bytes[8:12])[0]
+    if page_size < 512 or page_size > 65536 or page_size & (page_size - 1):
+        raise ValueError("invalid WAL page size")
+    if format_version != 3007000:
+        raise ValueError("unsupported WAL format version")
     header = {
         "magic": hex(magic),
         "little_endian_checksum": le,
@@ -256,10 +262,12 @@ def parse_wal(wal_bytes: bytes) -> dict[str, Any]:
     seed0, seed1 = hc0, hc1
     offset = 32
     idx = 0
+    chain_valid = header["header_checksum_valid"]
+    last_commit = None
     while offset + frame_size <= len(wal_bytes):
         fh = wal_bytes[offset:offset + 24]
         page_no = struct.unpack(">I", fh[0:4])[0]
-        # Byte 4..7 = nRec / db-size (high bit set => commit frame).
+        # A nonzero DB-size field marks a commit (not a high-bit flag).
         n_subj = struct.unpack(">I", fh[4:8])[0]
         f_salt_1 = struct.unpack(">I", fh[8:12])[0]
         f_salt_2 = struct.unpack(">I", fh[12:16])[0]
@@ -270,15 +278,18 @@ def parse_wal(wal_bytes: bytes) -> dict[str, Any]:
         c0, c1 = wal_checksum(wal_bytes[offset + 24:offset + 24 + page_size], c0, c1, le)
         salt_ok = (f_salt_1, f_salt_2) == salt
         checksum_ok = (c0 == fc0 and c1 == fc1)
-        commit = bool(n_subj & 0x80000000)
+        commit = n_subj != 0
+        chain_valid = chain_valid and salt_ok and checksum_ok and 0 < page_no <= 0xFFFFFFFE
+        if commit and chain_valid:
+            last_commit = idx
         frames.append({
             "index": idx,
             "page_number": page_no,
-            "db_size": n_subj & 0x7FFFFFFF,
+            "db_size": n_subj,
             "commit": commit,
             "salt_ok": salt_ok,
             "checksum_ok": checksum_ok,
-            "valid": salt_ok and checksum_ok,
+            "valid": chain_valid,
         })
         if salt_ok and checksum_ok:
             seed0, seed1 = c0, c1
@@ -289,35 +300,59 @@ def parse_wal(wal_bytes: bytes) -> dict[str, Any]:
         "frames": frames,
         "frame_count": len(frames),
         "valid_frames": sum(1 for f in frames if f["valid"]),
+        "last_commit_index": last_commit,
+        "committed_frame_count": last_commit + 1 if last_commit is not None else 0,
+        "trailing_bytes": len(wal_bytes) - offset,
     }
 
 
 def reconstruct_logical_pages(db_bytes: bytes, wal_bytes: bytes | None,
-                               page_size: int) -> dict[int, bytes]:
-    """Overlay valid WAL frames onto the DB pages. Returns {page_number: bytes}."""
-    pages: dict[int, bytes] = {}
-    num_pages = len(db_bytes) // page_size
-    for pn in range(1, num_pages + 1):
-        start = (pn - 1) * page_size
-        pages[pn] = db_bytes[start:start + page_size]
-    if not wal_bytes:
+                               page_size: int, *, diagnostics: dict | None = None) -> dict[int, bytes]:
+    """Rebuild the last committed snapshot, never overlaying uncommitted tails.
+
+    Follows SQLite's file format §§4.1/4.5. Diagnostics make skipped WAL data
+    visible to the public tool instead of silently claiming an applied WAL.
+    """
+    if page_size < 512 or page_size > 65536 or page_size & (page_size - 1):
+        raise ValueError("invalid SQLite page size")
+    detail = diagnostics if diagnostics is not None else {}
+    detail.update(applied_frames=0, page_sources={}, warnings=[])
+    pages = {pn: db_bytes[(pn-1)*page_size:pn*page_size]
+             for pn in range(1, len(db_bytes)//page_size + 1)}
+    if len(db_bytes) % page_size:
+        detail["warnings"].append("database ends in a truncated page; incomplete page excluded")
+    if wal_bytes is None:
         return pages
     try:
         wal = parse_wal(wal_bytes)
-    except ValueError:
+    except ValueError as exc:
+        detail["warnings"].append(f"WAL was not applied: {exc}")
         return pages
-    # Latest valid frame per page number wins.
-    latest: dict[int, bytes] = {}
-    off = 32
+    detail["wal"] = {key: value for key, value in wal.items() if key != "frames"}
+    if wal["header"]["page_size"] != page_size:
+        detail["warnings"].append("WAL page size differs from database; WAL was not applied")
+        return pages
+    committed = wal["committed_frame_count"]
+    if not wal["header"]["header_checksum_valid"]:
+        detail["warnings"].append("WAL header checksum is invalid; WAL was not applied")
+    if wal["valid_frames"] < wal["frame_count"]:
+        detail["warnings"].append("invalid WAL checksum/salt/page chain; frames after its first failure were excluded")
+    if wal["trailing_bytes"]:
+        detail["warnings"].append("truncated WAL tail excluded from reconstruction")
+    if wal["valid_frames"] > committed:
+        detail["warnings"].append("uncommitted WAL frames excluded from the current snapshot")
+    if not committed:
+        return pages
     frame_size = 24 + page_size
-    for fr in wal["frames"]:
-        if not fr["valid"]:
-            off += frame_size
-            continue
-        page_data = wal_bytes[off + 24:off + 24 + page_size]
-        latest[fr["page_number"]] = page_data
-        off += frame_size
-    pages.update(latest)
+    for fr in wal["frames"][:committed]:
+        offset = 32 + fr["index"] * frame_size
+        pages[fr["page_number"]] = wal_bytes[offset+24:offset+24+page_size]
+        detail["page_sources"][fr["page_number"]] = {"frame_index": fr["index"], "offset": offset+24}
+    db_size = wal["frames"][committed-1]["db_size"]
+    pages = {number: data for number, data in pages.items() if number <= db_size}
+    detail["page_sources"] = {number: ref for number, ref in detail["page_sources"].items() if number <= db_size}
+    detail["applied_frames"] = committed
+    detail["committed_db_size"] = db_size
     return pages
 
 
@@ -752,6 +787,8 @@ def recover_deleted(pages: dict[int, bytes], schema: list[dict[str, Any]],
                             continue
                 i += 1
         results.append({"table": table["name"], "live_rows": len(live),
+                        "live_records": [{"page": pn, "rowid": rowid, "columns": cols, "state": "LIVE"}
+                                         for pn, rowid, cols in live[:limit_per_table]],
                         "recovered": candidates})
     return results
 

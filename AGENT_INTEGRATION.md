@@ -26,7 +26,11 @@ dftk agent setup \
 
 `agent setup` creates the case workspace, installs the release-matched Skill into
 the detected Agent Skills location, and writes a reviewable MCP configuration
-artifact. It never edits a host's global MCP configuration without the host owner's
+artifact. Launch entries use the installing Python interpreter plus `-m dftk`,
+so a desktop host does not need the same shell PATH. Setup also enables a
+workspace audit ledger by default and respects custom `CODEX_HOME` Skill paths.
+Keep that runtime environment available, or rerun setup after moving it.
+It never edits a host's global MCP configuration without the host owner's
 explicit import/approval. This prevents unrelated MCP entries from being replaced.
 
 Start with a dry run when an Agent needs to explain its actions first:
@@ -46,7 +50,8 @@ dftk mcp --root /evidence/2026-001 --workspace /cases/2026-001 --check
 
 For Codex, add the generated `codex_toml` block to its MCP configuration. For any
 JSON-configured MCP host, merge `mcp_json.mcpServers.dftk`; its launch command is
-always `dftk mcp --root <root> --workspace <workspace> ...`.
+the installing Python executable with arguments
+`-m dftk mcp --root <root> --workspace <workspace> ...`.
 
 ## Agent operating loop
 
@@ -55,12 +60,17 @@ After the host exposes DFTK, the Agent follows a small, recoverable tool loop:
 1. Call `dftk_doctor` and state the active root, safety, network, and timeout policy.
 2. Create a case with `dftk_case(action="new")`.
 3. Use `dftk_case(action="guided_intake", path=..., case_id=...)` for the first
-   bounded pass. It preserves the intake manifest and child observations separately.
+   bounded pass. It uses the same isolated worker, root policy, timeout, and audit
+   settings as ordinary MCP runs, including each selected child. It preserves the intake manifest and child observations separately.
 4. Use `dftk_case(action="next")`, then `dftk_search_capabilities` and
    `dftk_describe` before every new capability choice.
 5. Run the chosen capability with `dftk_run(..., case_id=...)`. Branch on `ok`; do
    not turn an `unsupported`, `blocked`, or `error` result into a finding.
-6. Before handing off or recovering context, call `dftk_case(action="brief")` and
+6. Before negative findings or final reporting, call
+   `dftk_case(action="coverage")`. Review run failures, pending analysis, traversal
+   exclusions, sidecar warnings, and result integrity; no recorded limitation is
+   not proof of full acquisition or absence of activity.
+7. Before handing off or recovering context, call `dftk_case(action="brief")` and
    `dftk_case(action="graph")`. Export only after reviewing the timeline.
 
 Use `dftk_read_case_run` to page a persisted observation rather than rerunning a

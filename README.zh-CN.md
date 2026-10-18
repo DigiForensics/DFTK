@@ -88,6 +88,7 @@ dftk skill --install --target all --dry-run
 ## 文档
 
 - [用户指南](docs/user-guide.md) — CLI、Python API、Case、Observation 和审计日志。
+- [Agent 可靠性验证](docs/agent-reliability.md) — 安装、覆盖检查、SQLite 事务恢复与实际测试。
 - [MCP 指南](docs/mcp.md) — 本地服务策略和宿主配置。
 - [能力地图](CAPABILITIES.md) — 能力领域和分组。
 - [架构](ARCHITECTURE.md) — 注册表、证据契约和运行时边界。
@@ -95,7 +96,10 @@ dftk skill --install --target all --dry-run
 - [外部工具链部署](DEPLOY-TOOLCHAIN.md) — 外部取证二进制工具。
 - [开发指南](docs/development.md) — 环境、测试和贡献流程。
 
-一个注册表，127 个工具（123 个 `READ_ONLY`、4 个 `STATEFUL`）——112 个原语加 15 个配方。
+一个注册表，128 个工具（124 个 `READ_ONLY`、4 个 `STATEFUL`）——113 个原语加 15 个配方。
+
+事件链狩猎：`timeline.hunt_sequences` 按共享实体字段关联有序事件，保留来源哈希、
+记录定位与分析覆盖限制。可运行示例见[事件链狩猎指南](docs/sequence-hunting.md)。
 
 ## 项目信息
 

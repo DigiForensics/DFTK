@@ -1,9 +1,9 @@
 {
   "schema_version": "3",
   "toolkit_version": "3.6.0",
-  "tool_count": 127,
+  "tool_count": 128,
   "safety_counts": {
-    "READ_ONLY": 123,
+    "READ_ONLY": 124,
     "STATEFUL": 4
   },
   "domain_counts": {
@@ -31,7 +31,7 @@
     "network": 8,
     "recipe": 15,
     "server": 2,
-    "timeline": 2,
+    "timeline": 3,
     "tree": 1,
     "web": 4,
     "windows": 14
@@ -1602,7 +1602,9 @@
           },
           "limit_per_table": {
             "type": "integer",
-            "default": 200
+            "default": 200,
+            "minimum": 1,
+            "maximum": 10000
           }
         },
         "required": [
@@ -1829,7 +1831,7 @@
     },
     {
       "name": "database.sqlite_recover",
-      "description": "Reconstruct the logical current database by overlaying valid WAL frames onto DB pages, then recover live + deleted records across all tables. The deepest SQLite recovery path.",
+      "description": "Reconstruct only the last committed valid WAL snapshot; return bounded live storage records, heuristic deleted candidates, WAL diagnostics, and unsupported-table coverage. Source DB/WAL remain unchanged.",
       "safety": "READ_ONLY",
       "network": false,
       "parameters": {
@@ -1847,7 +1849,9 @@
           },
           "limit_per_table": {
             "type": "integer",
-            "default": 200
+            "default": 200,
+            "minimum": 1,
+            "maximum": 10000
           }
         },
         "required": [
@@ -2307,7 +2311,9 @@
             "type": "string"
           },
           "query": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
           },
           "regex": {
             "type": "boolean",
@@ -2319,15 +2325,21 @@
           },
           "max_files": {
             "type": "integer",
-            "default": 20000
+            "default": 20000,
+            "minimum": 1,
+            "maximum": 50000
           },
           "max_file_size": {
             "type": "integer",
-            "default": 16777216
+            "default": 16777216,
+            "minimum": 1,
+            "maximum": 268435456
           },
           "limit": {
             "type": "integer",
-            "default": 1000
+            "default": 1000,
+            "minimum": 1,
+            "maximum": 10000
           }
         },
         "required": [
@@ -4358,6 +4370,120 @@
       }
     },
     {
+      "name": "timeline.hunt_sequences",
+      "description": "Find bounded ordered event chains across forensic timelines using exact-field rules and shared entity fields. Returns source-linked investigative leads, explicit coverage limits, and no automatic compromise verdict.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64
+          },
+          "inline": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "event_limit": {
+            "type": "integer",
+            "default": 200000,
+            "minimum": 1,
+            "maximum": 200000
+          },
+          "limit": {
+            "type": "integer",
+            "default": 1000,
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "rules": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "steps",
+                "group_by",
+                "within_seconds"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "info",
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "steps": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 8,
+                  "description": "Ordered exact-field selectors (AND fields; array values mean OR; dotted paths supported).",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "group_by": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "description": "Shared entity fields required in every step, such as host and user; missing values never join.",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "within_seconds": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 604800,
+                  "description": "Inclusive first-to-last time window; step timestamps must strictly increase."
+                }
+              }
+            }
+          }
+        }
+      },
+      "tags": [
+        "timeline",
+        "correlation",
+        "hunting",
+        "sequence",
+        "incident-response"
+      ],
+      "produces": [
+        "sequence_matches",
+        "timeline"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "medium",
+      "path_roles": {
+        "files": "ANALYSIS_INPUT"
+      }
+    },
+    {
       "name": "timeline.merge",
       "description": "Merge time-bearing events from multiple dftk tool outputs or inline sources into one normalized, source-attributed timeline. Inputs are read-only; nothing is modified.",
       "safety": "READ_ONLY",
@@ -4370,6 +4496,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 64,
             "description": "Paths to dftk Observation JSON files (each should contain facts.events)"
           },
           "inline": {
@@ -4381,7 +4508,9 @@
           },
           "limit": {
             "type": "integer",
-            "default": 200000
+            "default": 200000,
+            "minimum": 1,
+            "maximum": 200000
           }
         }
       },

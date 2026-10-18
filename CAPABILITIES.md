@@ -1,6 +1,6 @@
 # Capability map — DFTK 3.6.0
 
-The registry contains 127 tools (123 READ_ONLY, 4 STATEFUL) — 112 primitives plus 15 recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
+The registry contains 128 tools (124 READ_ONLY, 4 STATEFUL) — 113 primitives plus 15 recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
 
 ## Artifact and filesystem
 
@@ -156,6 +156,7 @@ establish local-user attribution or a completed authenticated action.
 ## Timeline correlation and case sessions
 
 - `correlation.entity_graph` — source-linked domains, IPs, email addresses, SHA-256 values, and account identifiers across DFTK Observations; includes deterministic co-observation relationships.
+- `timeline.hunt_sequences` — bounded ordered event-chain hunting with exact-field selectors, shared entity keys, source hashes/locators, and explicit incomplete-coverage status. See [usage](docs/sequence-hunting.md).
 - `timeline.merge` — pure correlation primitive: normalize ISO/epoch timestamps, sort, and attribute events to their source across multiple inputs.
 - `dftk case graph <case_id>` / MCP `dftk_case(action="graph")` — derive the same entity graph directly from persisted Case Observations.
 - `recipe.timeline.unified` — compose a filesystem metadata timeline (and optional extra sources) into one unified timeline.

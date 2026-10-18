@@ -64,6 +64,7 @@ def fetch_skill_repo(ref: str | None = None, dest: Path | None = None) -> Path:
             ["git", "clone", "--depth", "1", "--branch", ref, SKILL_REPO_URL, str(dest)],
             check=True,
             capture_output=True,
+            timeout=180,
         )
         return dest
 
@@ -72,7 +73,7 @@ def fetch_skill_repo(ref: str | None = None, dest: Path | None = None) -> Path:
         "https://github.com/DigiForensics/DFTK-skill/archive/refs/tags/"
         f"{ref}.tar.gz"
     )
-    with urlopen(url) as resp:
+    with urlopen(url, timeout=30) as resp:
         data = resp.read()
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
         _safe_extract_tar(tf, dest)
@@ -81,10 +82,12 @@ def fetch_skill_repo(ref: str | None = None, dest: Path | None = None) -> Path:
 
 
 # VCS / CI / metadata that must never be copied into an installed skill dir.
-_SKIP_NAMES = {".git", ".gitignore", ".github"}
+_SKIP_NAMES = {".git", ".gitignore", ".github", ".venv", "__pycache__", ".pytest_cache", ".DS_Store"}
 
 
 def _copy_tree(src: Path, dst: Path, exclude_top: set[str] | None = None) -> None:
+    if dst.is_symlink():
+        raise ValueError(f"refusing to install through destination symlink: {dst}")
     dst.mkdir(parents=True, exist_ok=True)
     for child in src.iterdir():
         if child.name in _SKIP_NAMES:
@@ -92,6 +95,8 @@ def _copy_tree(src: Path, dst: Path, exclude_top: set[str] | None = None) -> Non
         if exclude_top and child.name in exclude_top:
             continue
         target = dst / child.name
+        if child.is_symlink() or target.is_symlink():
+            raise ValueError(f"skill copy does not accept symlinks: {child} -> {target}")
         if child.is_dir():
             _copy_tree(child, target)
         else:
@@ -108,8 +113,19 @@ def install_from_repo_root(repo_root: str | Path, destination: str | Path) -> li
 
     Returns the list of installed skill directories.
     """
-    repo_root = Path(repo_root)
+    repo_root = Path(repo_root).resolve()
     base = Path(destination).expanduser()
+    if not (repo_root / "SKILL.md").is_file() or not (repo_root / "references").is_dir():
+        raise ValueError("incomplete DFTK skill bundle: SKILL.md and references/ are required")
+    if base.resolve().is_relative_to(repo_root) or repo_root.is_relative_to((base / MAIN_SKILL_NAME).resolve()):
+        raise ValueError("skill installation destination overlaps its source repository")
+    for entry in repo_root.rglob("*"):
+        if entry.is_symlink() and not any(part in _SKIP_NAMES for part in entry.relative_to(repo_root).parts):
+            raise ValueError(f"skill bundle contains a symlink: {entry}")
+    for specialist in (repo_root / "skills").iterdir() if (repo_root / "skills").is_dir() else []:
+        if specialist.is_dir() and not specialist.name.startswith("."):
+            if specialist.name == MAIN_SKILL_NAME or not (specialist / "SKILL.md").is_file():
+                raise ValueError(f"invalid specialist skill bundle: {specialist.name}")
     installed: list[Path] = []
 
     main_dest = base / MAIN_SKILL_NAME
