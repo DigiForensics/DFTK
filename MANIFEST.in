@@ -20,5 +20,6 @@ include AGENTS.md
 include INSTALL_AGENT.md
 include DEPLOY-TOOLCHAIN.md
 include RELEASE_NOTES_3.6.md
+include RELEASE_NOTES_3.6.1.md
 recursive-include docs *.md *.json
 recursive-include scripts *.py

@@ -1,4 +1,4 @@
-# Capability map — DFTK 3.6.0
+# Capability map — DFTK 3.6.1
 
 The registry contains 128 tools (124 READ_ONLY, 4 STATEFUL) — 113 primitives plus 15 recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
 

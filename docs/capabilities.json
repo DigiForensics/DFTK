@@ -1,6 +1,6 @@
 {
   "schema_version": "3",
-  "toolkit_version": "3.6.0",
+  "toolkit_version": "3.6.1",
   "tool_count": 128,
   "safety_counts": {
     "READ_ONLY": 124,

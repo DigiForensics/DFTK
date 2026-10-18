@@ -2,7 +2,10 @@
 
 All notable public changes to DFTK are recorded here.
 
-## Unreleased
+## 3.6.1 — Sequence hunting and coverage gate
+
+**128 capabilities across 28 domains**, with 124 READ_ONLY tools, four STATEFUL
+tools and no DESTRUCTIVE tools. Up from 127: adds `timeline.hunt_sequences`.
 
 - Add `timeline.hunt_sequences`: search ordered event chains (2–8 steps) across
   persisted Observation JSON and inline bundles, grouped by 1–8 fields inside a
