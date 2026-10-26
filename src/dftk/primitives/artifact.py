@@ -20,10 +20,21 @@ import os,re,struct,zipfile,hashlib
 from dftk.core.registry import registry
 from dftk.core.models import Observation,Evidence,Status,SafetyLevel
 from dftk.core.helpers import sha256_file,bounded_files,safe_rel,TraversalReport,read_file_bounded
+from dftk.core.media_types import media_signature
 
 
 def _kind_from_header(p:Path, head:bytes)->tuple[str,float,list[str]]:
     notes=[]
+    if kind := media_signature(head):
+        return kind, 0.99, notes
+    if head.startswith(b'Salted__'):
+        return 'openssl_salted', 0.99, notes
+    if head.startswith(b'7z\xbc\xaf\x27\x1c'):
+        return '7z', 0.99, notes
+    if head.startswith(b'Rar!\x1a\x07'):
+        return 'rar', 0.99, notes
+    if head[257:262] == b'ustar':
+        return 'tar', 0.99, notes
     if head.startswith(b'PK\x03\x04') or head.startswith(b'PK\x05\x06'):
         kind='zip'; conf=0.98
         try:

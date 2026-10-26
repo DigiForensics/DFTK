@@ -1,10 +1,10 @@
 {
   "schema_version": "3",
-  "toolkit_version": "3.6.1",
-  "tool_count": 128,
+  "toolkit_version": "3.7.0",
+  "tool_count": 136,
   "safety_counts": {
-    "READ_ONLY": 124,
-    "STATEFUL": 4
+    "READ_ONLY": 131,
+    "STATEFUL": 5
   },
   "domain_counts": {
     "android": 7,
@@ -15,18 +15,19 @@
     "browser": 8,
     "case": 2,
     "correlation": 1,
-    "crypto": 3,
+    "crypto": 4,
     "custody": 1,
     "database": 10,
     "docker": 2,
     "email": 4,
     "encoding": 1,
-    "evidence": 1,
-    "file": 4,
+    "evidence": 2,
+    "file": 5,
     "filesystem": 6,
     "image": 3,
     "linux": 4,
     "malware": 1,
+    "media": 5,
     "memory": 6,
     "network": 8,
     "recipe": 15,
@@ -379,6 +380,10 @@
           "overwrite": {
             "type": "boolean",
             "default": false
+          },
+          "password": {
+            "type": "string",
+            "description": "A single evidence-backed or user-provided ZIP password. No password guessing is performed."
           }
         },
         "required": [
@@ -416,7 +421,15 @@
           },
           "limit": {
             "type": "integer",
-            "default": 10000
+            "default": 10000,
+            "minimum": 1,
+            "maximum": 50000
+          },
+          "offset": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 1000000
           }
         },
         "required": [
@@ -1502,6 +1515,121 @@
       }
     },
     {
+      "name": "crypto.openssl_decrypt",
+      "description": "Perform ONE supplied-password OpenSSL enc decryption with explicit cipher, KDF and expected inner format. Password is passed through stdin, never argv. Publish a derived workspace artifact only after structural validation. No algorithm/password guessing or automatic retries.",
+      "safety": "STATEFUL",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "output_dir": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "key_evidence": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "description": "Source citation for the candidate or explicit user-provided credential reference; never the password itself."
+          },
+          "cipher": {
+            "type": "string",
+            "enum": [
+              "aes-128-cbc",
+              "aes-192-cbc",
+              "aes-256-cbc",
+              "aes-128-ctr",
+              "aes-256-ctr"
+            ]
+          },
+          "kdf": {
+            "type": "string",
+            "enum": [
+              "pbkdf2",
+              "legacy"
+            ]
+          },
+          "expected_kind": {
+            "type": "string",
+            "enum": [
+              "zip",
+              "sqlite",
+              "gzip",
+              "tar"
+            ]
+          },
+          "digest": {
+            "type": "string",
+            "enum": [
+              "sha256",
+              "sha512",
+              "md5"
+            ],
+            "default": "sha256"
+          },
+          "iterations": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 10000000,
+            "default": 10000
+          },
+          "base64_encoded": {
+            "type": "boolean",
+            "default": false
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 268435456,
+            "default": 67108864
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120,
+            "default": 30
+          }
+        },
+        "required": [
+          "path",
+          "output_dir",
+          "password",
+          "key_evidence",
+          "cipher",
+          "kdf",
+          "expected_kind"
+        ]
+      },
+      "tags": [
+        "crypto",
+        "encrypted",
+        "openssl",
+        "decrypt",
+        "archive"
+      ],
+      "produces": [
+        "decrypted_artifact",
+        "derived_artifacts",
+        "decryption_validation"
+      ],
+      "requires": [
+        "openssl"
+      ],
+      "deterministic": true,
+      "cost_hint": "medium",
+      "path_roles": {
+        "path": "EVIDENCE_INPUT",
+        "output_dir": "WORKSPACE_OUTPUT"
+      }
+    },
+    {
       "name": "custody.ledger_verify",
       "description": "Verify a DFTK chain-of-custody audit ledger (JSONL). Recomputes the per-record SHA-256 hash chain and reports records that were edited, deleted, reordered, truncated or downgraded, plus optionally compares the ledger against a seal written by 'dftk audit seal'. Verification is read-only. A status of ok means verification completed: read facts.verdict ('intact'/'legacy'/'partial'/'defective') and facts.chain_ok for the result — a negative integrity finding is an examination result, not a tool failure.",
       "safety": "READ_ONLY",
@@ -2213,6 +2341,50 @@
       "path_roles": {}
     },
     {
+      "name": "evidence.browse",
+      "description": "Page a directory without a fixed investigation workflow. Lists media hints and unreadable/symlink entries explicitly; does not decode images or send pixels. Evidence/workspace directory metadata only; content-reading tools independently validate registered derived files.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 50000,
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 100
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "evidence",
+        "browse",
+        "directory",
+        "media"
+      ],
+      "produces": [
+        "directory_entries"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low",
+      "path_roles": {
+        "path": "ANALYSIS_INPUT"
+      }
+    },
+    {
       "name": "evidence.intake",
       "description": "Create a bounded, read-only evidence intake manifest for a file or directory and return source-linked next DFTK calls for an Agent.",
       "safety": "READ_ONLY",
@@ -2235,6 +2407,12 @@
             "default": 200,
             "minimum": 1,
             "maximum": 1000
+          },
+          "offset": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 1000000
           }
         },
         "required": [
@@ -2291,6 +2469,61 @@
       ],
       "produces": [
         "observation"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low",
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      }
+    },
+    {
+      "name": "file.read_text",
+      "description": "Read a bounded byte window as text, with byte locators and explicit continuation. Use for configs/logs/plain documents. Images/videos require authorised media.preview; this tool does not decode them.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65536,
+            "default": 16384
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "utf-8",
+              "utf-16-le",
+              "utf-16-be",
+              "gb18030",
+              "latin-1"
+            ],
+            "default": "utf-8"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "file",
+        "text",
+        "read",
+        "log",
+        "config"
+      ],
+      "produces": [
+        "text_window"
       ],
       "requires": [],
       "deterministic": true,
@@ -3088,6 +3321,358 @@
       "path_roles": {
         "path": "EVIDENCE_INPUT",
         "rule_file": "ANALYSIS_INPUT"
+      }
+    },
+    {
+      "name": "media.contact_sheet",
+      "description": "Consent-gated overview of up to 16 still images, with numbered thumbnails mapped to source paths/hashes. Use a single-image crop for detailed examination. Never sends pixels without scoped user consent and confirmed model image support.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 16
+          },
+          "user_authorized": {
+            "type": "boolean",
+            "default": false,
+            "description": "User consent must cover every listed source."
+          },
+          "model_supports_images": {
+            "type": "boolean",
+            "default": false
+          },
+          "columns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4,
+            "default": 4
+          },
+          "cell_size": {
+            "type": "integer",
+            "minimum": 128,
+            "maximum": 512,
+            "default": 320
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      },
+      "tags": [
+        "media",
+        "image",
+        "preview",
+        "batch"
+      ],
+      "produces": [
+        "media_contact_sheet"
+      ],
+      "requires": [
+        "Pillow"
+      ],
+      "deterministic": true,
+      "cost_hint": "low",
+      "path_roles": {
+        "paths": "EVIDENCE_INPUT"
+      }
+    },
+    {
+      "name": "media.inspect",
+      "description": "Inspect image/video metadata without sending pixels to a model. Reports visual-consent requirements; metadata inspection is not content examination.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Source evidence or a registered Case-derived media file."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "media",
+        "image",
+        "video",
+        "metadata"
+      ],
+      "produces": [
+        "media_metadata"
+      ],
+      "requires": [],
+      "deterministic": true,
+      "cost_hint": "low",
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      }
+    },
+    {
+      "name": "media.ocr",
+      "description": "Local image/video-frame OCR with text boxes, confidence and source/timestamp locators. CUDA/MPS first. If GPU is unavailable/fails, ask the user before allow_cpu=true (CPU can be very slow). No model downloads or remote uploads.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Source evidence or a registered Case-derived media file."
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "default": [
+              "ch_sim",
+              "en"
+            ]
+          },
+          "allow_cpu": {
+            "type": "boolean",
+            "default": false,
+            "description": "Set only after telling the user GPU OCR is unavailable/failed and receiving explicit CPU consent."
+          },
+          "start_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0
+          },
+          "interval_seconds": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 3600,
+            "default": 5
+          },
+          "frame_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "default": 1
+          },
+          "crop_box": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "default": null,
+            "description": "Image crop [left,top,right,bottom] in EXIF-oriented source pixels, before resizing. Not supported for video."
+          },
+          "max_dimension": {
+            "type": "integer",
+            "minimum": 128,
+            "maximum": 4096,
+            "default": 2560
+          },
+          "result_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000,
+            "default": 500
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "media",
+        "image",
+        "video",
+        "ocr",
+        "text"
+      ],
+      "produces": [
+        "ocr_text",
+        "ocr_boxes"
+      ],
+      "requires": [
+        "Pillow",
+        "easyocr"
+      ],
+      "deterministic": true,
+      "cost_hint": "high",
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
+      }
+    },
+    {
+      "name": "media.ocr_batch",
+      "description": "GPU-first local OCR over up to 32 still images using one model initialisation. Returns separate file outcomes and source-linked text boxes. No visual model disclosure; CPU requires explicit user consent. A GPU inference failure stops the batch without CPU fallback.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 32
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "default": [
+              "ch_sim",
+              "en"
+            ]
+          },
+          "allow_cpu": {
+            "type": "boolean",
+            "default": false,
+            "description": "Only after explicit user consent to slow CPU OCR; never automatically enabled."
+          },
+          "max_dimension": {
+            "type": "integer",
+            "minimum": 128,
+            "maximum": 4096,
+            "default": 2560
+          },
+          "result_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000,
+            "default": 1000
+          },
+          "time_budget_seconds": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 120,
+            "default": 90,
+            "description": "Cooperative budget checked between images, including model initialisation; completed results are returned before continuing unattempted inputs."
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      },
+      "tags": [
+        "media",
+        "image",
+        "ocr",
+        "batch",
+        "text"
+      ],
+      "produces": [
+        "ocr_text",
+        "ocr_boxes",
+        "batch_outcomes"
+      ],
+      "requires": [
+        "Pillow",
+        "easyocr"
+      ],
+      "deterministic": true,
+      "cost_hint": "high",
+      "path_roles": {
+        "paths": "EVIDENCE_INPUT"
+      }
+    },
+    {
+      "name": "media.preview",
+      "description": "Explicitly authorised visual disclosure. Returns bounded image previews or timestamped video frames for an image-capable Agent. Defaults disclose no pixels. Use dftk_view_media for native MCP images.",
+      "safety": "READ_ONLY",
+      "network": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Source evidence or a registered Case-derived media file."
+          },
+          "user_authorized": {
+            "type": "boolean",
+            "default": false,
+            "description": "True only after the user explicitly permits visual review of this media/scope."
+          },
+          "model_supports_images": {
+            "type": "boolean",
+            "default": false,
+            "description": "Host attestation that the current model accepts images. Never guess."
+          },
+          "start_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0
+          },
+          "interval_seconds": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 3600,
+            "default": 5
+          },
+          "frame_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "default": 1
+          },
+          "crop_box": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "default": null,
+            "description": "Image crop [left,top,right,bottom] in EXIF-oriented source pixels, before resizing. Not supported for video."
+          },
+          "max_dimension": {
+            "type": "integer",
+            "minimum": 128,
+            "maximum": 2048,
+            "default": 1280
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "tags": [
+        "media",
+        "image",
+        "video",
+        "preview"
+      ],
+      "produces": [
+        "media_preview"
+      ],
+      "requires": [
+        "Pillow"
+      ],
+      "deterministic": true,
+      "cost_hint": "low",
+      "path_roles": {
+        "path": "EVIDENCE_INPUT"
       }
     },
     {

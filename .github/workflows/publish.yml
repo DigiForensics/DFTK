@@ -21,6 +21,24 @@ jobs:
           cache: pip
       - run: python -m pip install -U pip
       - run: python -m pip install -e ".[dev]"
+      - name: Check release version and companion tag
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import dftk
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          expected = f"v{dftk.__version__}"
+          if tag != expected:
+              raise SystemExit(f"Release tag {tag} does not match package version {expected}")
+          subprocess.run([
+              "git", "ls-remote", "--exit-code", "--refs",
+              "https://github.com/DigiForensics/DFTK-skill.git",
+              f"refs/tags/{tag}",
+          ], check=True)
+          PY
+      - run: python scripts/check_docs.py
       - run: pytest -q
       - name: Require an explicit public license
         run: |

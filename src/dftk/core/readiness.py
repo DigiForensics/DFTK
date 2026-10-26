@@ -26,6 +26,8 @@ from .external_tools import EXTERNAL_TOOL_NAMES, external_tool_available
 # packages); ``install`` is the precise command a user runs to make the tool
 # runnable. Unmapped names fall back to a generic pip install below.
 OPTIONAL_REQUIREMENTS: dict[str, dict[str, Any]] = {
+    "Pillow": {"module": "PIL", "label": "media:pillow", "extra": "media", "install": 'pip install "dftk[media]"'},
+    "easyocr": {"module": "easyocr", "label": "media:ocr", "extra": "ocr", "install": 'pip install "dftk[ocr]"'},
     "pyesedb": {"module": "pyesedb", "label": "windows:ese", "extra": "ese", "install": 'pip install "dftk[ese]"'},
     "pyewf": {"module": "pyewf", "label": "disk:pyewf", "extra": None, "install": "pip install pyewf"},
     "pytsk3": {"module": "pytsk3", "label": "disk:pytsk3", "extra": None, "install": "pip install pytsk3"},

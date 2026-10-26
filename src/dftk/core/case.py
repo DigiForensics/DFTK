@@ -35,7 +35,8 @@ from .audit import ToolAuditLog
 from .filelock import exclusive_file_lock
 from .registry import registry
 from .safety import SafetyPolicy
-from .audit import ToolAuditLog
+from .helpers import sha256_file
+from .media_types import media_signature, media_type
 from .timeline_core import merge_events
 
 
@@ -227,6 +228,7 @@ class CaseSession:
         caller: str | None = None,
         evidence_root: Any = None,
         workspace_root: Any = None,
+        attempt_id: str | None = None,
     ) -> tuple[Observation, dict]:
         """Run and persist one capability, returning its exact manifest entry.
 
@@ -251,11 +253,17 @@ class CaseSession:
         with self._run_lock:
             with _exclusive_file_lock(lock_path):
                 manifest = self._manifest(case_id)
+                attempt = {'attempt_id': attempt_id or uuid.uuid4().hex, 'tool': tool,
+                    'params': {key: ('<redacted>' if key == 'password' else value) for key, value in (params or {}).items()},
+                    'status': 'running', 'started_at': _now()}
+                manifest.setdefault('attempts', []).append(attempt)
+                self._save_manifest(case_id, manifest)
                 policy = SafetyPolicy(
                     max_level=SafetyLevel[max_safety],
                     allow_network=allow_network,
                     evidence_root=Path(evidence_root) if evidence_root else None,
                     workspace_root=Path(workspace_root) if workspace_root else None,
+                    derived_inputs=manifest.get('derived_inputs', {}),
                 )
                 obs = registry.run(
                     tool,
@@ -274,13 +282,81 @@ class CaseSession:
                 entry = {
                     "seq": seq,
                     "tool": tool,
-                    "params": params or {},
+                    "params": {key: ('<redacted>' if key == 'password' else value)
+                               for key, value in (params or {}).items()},
                     "artifact": f"artifacts/{filename}",
                     "artifact_sha256": hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
                     "status": obs.status.value,
                     "ran_at": _now(),
                 }
                 manifest["runs"].append(entry)
+                attempt.update(status='completed', observation_status=obs.status.value, run_seq=seq, finished_at=_now())
+                inventory = manifest.setdefault('evidence_inventory', {})
+                if tool == 'evidence.intake':
+                    for candidate in obs.facts.get('candidates', []):
+                        key = str(Path(candidate['path']).resolve())
+                        old = inventory.get(key, {})
+                        same_content = candidate.get('sha256') and candidate.get('sha256') == old.get('sha256')
+                        inventory[key] = {**candidate, **{k: old[k] for k in ('perception', 'disposition', 'reason') if same_content and k in old},
+                                          'path': key, 'discovered_run': old.get('discovered_run', seq)}
+                for derived in obs.derived_artifacts:
+                    if not derived.path or not derived.source_artifact or not derived.sha256:
+                        continue
+                    output = Path(derived.path).resolve()
+                    try:
+                        output.relative_to(self.workspace.resolve())
+                    except ValueError:
+                        continue
+                    try:
+                        intact = output.is_file() and sha256_file(output) == derived.sha256
+                        with output.open('rb') as stream:
+                            kind = media_signature(stream.read(64)) or 'derived'
+                    except OSError:
+                        intact, kind = False, 'derived'
+                    category = media_type(kind, output.name)
+                    old = inventory.get(str(output), {})
+                    kept = {key: old[key] for key in ('perception', 'disposition', 'reason')
+                            if old.get('sha256') == derived.sha256 and key in old}
+                    inventory[str(output)] = {'path': str(output), 'kind': kind,
+                        'sha256': derived.sha256, 'artifact_id': derived.artifact_id,
+                        'source_artifact': derived.source_artifact, 'discovered_run': seq,
+                        'media_type': category, 'review_state': 'output_changed_or_unreadable' if not intact else
+                            'awaiting_visual_consent_or_local_ocr' if category else 'derived_content_unread', **kept}
+                    if intact:
+                        manifest.setdefault('derived_inputs', {})[str(output)] = derived.sha256
+                input_path = (params or {}).get('path')
+                if isinstance(input_path, str) and tool in {'media.inspect', 'media.preview', 'media.ocr', 'file.read_text', 'archive.inventory'}:
+                    resolved = Path(input_path)
+                    if not resolved.is_absolute() and evidence_root:
+                        resolved = Path(evidence_root) / resolved
+                    key = str(resolved.resolve())
+                    item = inventory.setdefault(key, {'path': key, 'discovered_run': seq})
+                    perception = item.setdefault('perception', {})
+                    perception[tool] = {'status': obs.status.value, 'run_seq': seq,
+                        'reason_code': obs.facts.get('reason_code'),
+                        'content_examined': obs.facts.get('content_examined', False)}
+                    if tool == 'archive.inventory':
+                        item['encrypted_members'] = obs.facts.get('encrypted_members', [])
+                    if tool == 'media.preview':
+                        perception[tool]['pixels_provided'] = bool(obs.facts.get('pixels_disclosed'))
+                    if tool == 'media.ocr':
+                        perception[tool]['frames_examined'] = obs.facts.get('frames_examined', [])
+                if tool in {'media.ocr_batch', 'media.contact_sheet'}:
+                    outcomes = {item['path']: item for item in obs.facts.get('files', [])}
+                    for raw_path in (params or {}).get('paths', []):
+                        resolved = Path(raw_path)
+                        if not resolved.is_absolute() and evidence_root:
+                            resolved = Path(evidence_root) / resolved
+                        key = str(resolved.resolve())
+                        outcome = outcomes.get(key, {})
+                        item = inventory.setdefault(key, {'path': key, 'media_type': 'image',
+                            'review_state': 'awaiting_visual_consent_or_local_ocr', 'discovered_run': seq})
+                        item.setdefault('perception', {})[tool] = {
+                            'status': outcome.get('status', obs.status.value), 'run_seq': seq,
+                            'row_count': outcome.get('row_count', 0),
+                            'content_examined': outcome.get('content_examined', False),
+                            'pixels_provided': tool == 'media.contact_sheet' and outcome.get('status') == 'ok' and bool(obs.facts.get('pixels_disclosed')),
+                            'reason_code': outcome.get('reason_code', obs.facts.get('reason_code'))}
                 if audit:
                     # Remember which ledger the case writes to so the exported
                     # report can attest to its own chain of custody. Store the
@@ -288,6 +364,48 @@ class CaseSession:
                     manifest["audit_ledger"] = str(audit_log.path)
                 self._save_manifest(case_id, manifest)
                 return obs, dict(entry)
+
+    def record_failed_attempt(self, case_id: str, attempt_id: str, tool: str, error: str) -> None:
+        """Parent-side record when a worker dies before producing an Observation."""
+        with self._run_lock, _exclusive_file_lock(self._case_dir(case_id) / '.case.lock'):
+            manifest = self._manifest(case_id)
+            attempts = manifest.setdefault('attempts', [])
+            attempt = next((item for item in attempts if item['attempt_id'] == attempt_id), None)
+            if attempt is None:
+                attempt = {'attempt_id': attempt_id, 'tool': tool, 'started_at': _now()}
+                attempts.append(attempt)
+            if attempt.get('status') != 'completed':
+                attempt.update(status='failed', error=error, finished_at=_now())
+            self._save_manifest(case_id, manifest)
+
+    def mark_view(self, case_id: str, operation: str) -> None:
+        with self._run_lock, _exclusive_file_lock(self._case_dir(case_id) / '.case.lock'):
+            manifest = self._manifest(case_id)
+            manifest.setdefault('views', {})[operation] = len(manifest.get('runs', []))
+            self._save_manifest(case_id, manifest)
+
+    def artifacts(self, case_id: str, *, offset: int = 0, limit: int = 100) -> dict[str, Any]:
+        """A paged evidence memory, not an autonomous investigation plan."""
+        inventory = self._manifest(case_id).get('evidence_inventory', {})
+        rows = [inventory[key] for key in sorted(inventory)]
+        offset, limit = max(0, int(offset)), min(500, max(1, int(limit)))
+        return {'case_id': case_id, 'total': len(rows), 'offset': offset,
+                'items': rows[offset:offset + limit],
+                'next_offset': offset + limit if offset + limit < len(rows) else None}
+
+    def note_artifact(self, case_id: str, path: str, disposition: str, reason: str) -> dict[str, Any]:
+        if disposition not in {'reviewed', 'deferred', 'user_declined', 'model_unsupported', 'not_relevant'}:
+            raise CaseError('invalid artifact disposition')
+        if not reason.strip():
+            raise CaseError('an artifact disposition needs a reason')
+        with self._run_lock, _exclusive_file_lock(self._case_dir(case_id) / '.case.lock'):
+            manifest = self._manifest(case_id)
+            item = manifest.get('evidence_inventory', {}).get(str(Path(path).resolve()))
+            if item is None:
+                raise CaseError('artifact is not in the Case inventory; use its recorded absolute path')
+            item.update(disposition=disposition, reason=reason, disposition_at=_now())
+            self._save_manifest(case_id, manifest)
+            return item
 
     def run(
         self,
@@ -367,24 +485,28 @@ class CaseSession:
         runs = list(manifest.get("runs", []))
         executed = {(str(run.get("tool")), json.dumps(run.get("params", {}), sort_keys=True, ensure_ascii=False)): run for run in runs}
         actions: list[dict[str, Any]] = []
-        intake: dict[str, Any] | None = None
-        for run in reversed(runs):
+        intakes: list[dict[str, Any]] = []
+        for run in runs:
             if run.get("tool") != "evidence.intake":
                 continue
             artifact = self._run_artifact_path(case_id, run)
             try:
                 _, intake = self.read_run(case_id, run["seq"])
+                intakes.append(intake)
             except CaseError:
                 pass
-            break
-        if intake is None:
+        if not intakes:
             actions.append({
                 "action": "run", "tool": "evidence.intake", "params": {"path": "<evidence path>"},
                 "reason": "No persisted evidence intake exists. Start with a bounded manifest before selecting specialist tools.",
                 "requires_user_value": ["path"],
             })
         else:
-            for step in (intake.get("facts", {}) or {}).get("next_steps", []):
+            steps = {}
+            for intake in intakes:
+                for step in (intake.get('facts', {}) or {}).get('next_steps', []):
+                    steps[json.dumps(step, sort_keys=True)] = step
+            for step in steps.values():
                 tool = step.get("tool")
                 params = step.get("params")
                 if not isinstance(tool, str) or not isinstance(params, dict):
@@ -403,9 +525,9 @@ class CaseSession:
                 if len(actions) >= limit:
                     break
         executed_tools = {str(run.get("tool")) for run in runs}
-        if len(runs) >= 2 and "case.entity_graph" not in executed_tools:
+        if len(runs) >= 2 and "case.entity_graph" not in executed_tools and manifest.get('views', {}).get('graph') != len(runs):
             actions.append({"action": "case", "operation": "graph", "reason": "Multiple persisted Observations can now be correlated into source-linked entities."})
-        if len(runs) >= 2 and "case.timeline" not in executed_tools:
+        if len(runs) >= 2 and "case.timeline" not in executed_tools and manifest.get('views', {}).get('timeline') != len(runs):
             actions.append({"action": "case", "operation": "timeline", "reason": "Multiple persisted Observations may contain time-bearing events."})
         return {"case_id": case_id, "run_count": len(runs), "actions": actions[:limit], "guidance": "Run only actions that answer the authorized investigation question; recommendations are triage steps, not findings."}
 
@@ -419,6 +541,11 @@ class CaseSession:
         """
         if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 0 <= max_steps <= 5:
             raise CaseError("max_steps must be between 0 and 5")
+        if objective:
+            with self._run_lock, _exclusive_file_lock(self._case_dir(case_id) / '.case.lock'):
+                manifest = self._manifest(case_id)
+                manifest['objective'] = objective
+                self._save_manifest(case_id, manifest)
         self._manifest(case_id)
         run_policy = {"evidence_root": evidence_root, "workspace_root": workspace_root,
                       "audit": audit, "caller": f"guided_intake:case:{case_id}"}
@@ -477,12 +604,19 @@ class CaseSession:
                                     "digest_verified": integrity_by_seq[seq]["digest_matches"],
                                     "coverage": intake_coverage})
         pending = [action for action in self.next_actions(case_id)["actions"] if action["action"] in {"run", "review"}]
+        unexamined = [item for item in manifest.get('evidence_inventory', {}).values()
+                      if (item.get('review_state') or item.get('encrypted_members'))
+                      and item.get('disposition') not in {'reviewed', 'not_relevant'}]
+        interrupted = [item for item in manifest.get('attempts', []) if item.get('status') != 'completed']
         return {
             "schema": "dftk.case.coverage/1", "case_id": case_id,
             "run_count": len(manifest.get("runs", [])), "status_counts": dict(statuses),
             "assessment": "no_runs" if not statuses else (
-                "limitations_present" if limitations or pending or not integrity["valid"] else "no_recorded_limitations"),
+                "limitations_present" if limitations or pending or unexamined or interrupted or not integrity["valid"] else "no_recorded_limitations"),
             "limitations": limitations, "integrity": integrity, "pending_analysis_actions": pending,
+            "unexamined_artifacts": unexamined[:100], 'unexamined_artifact_count': len(unexamined),
+            'unexamined_artifacts_omitted': max(0, len(unexamined) - 100),
+            'interrupted_attempts': interrupted,
             "guidance": "Operational coverage only. Review each limitation and deferred action against the investigation question; no_recorded_limitations does not establish full acquisition, parser coverage, or absence of activity.",
         }
 
@@ -518,10 +652,13 @@ class CaseSession:
                 if len(highlights) >= highlight_limit:
                     break
         graph = self.entity_graph(case_id, limit=500)
-        shared_entities = [node for node in graph.facts.get("nodes", []) if len(node.get("occurrences", [])) >= 2][:highlight_limit]
+        shared_entities = [node for node in graph.facts.get("nodes", [])
+                           if len({item['source'] for item in node.get('occurrences', [])}) >= 2][:highlight_limit]
         timeline = self.timeline(case_id, limit=10_000)
         return {
             "schema": "dftk.case.brief/1", "case_id": case_id, "name": manifest.get("name"),
+            'objective': manifest.get('objective'),
+            'evidence_inventory': self.artifacts(case_id, limit=20),
             "run_count": len(manifest.get("runs", [])), "runs": runs, "highlights": highlights,
             "coverage": self.coverage(case_id),
             "shared_entities": shared_entities, "timeline_span": timeline.facts.get("span"),

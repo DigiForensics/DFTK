@@ -139,7 +139,8 @@ def _iter_zip_members(path: str, limit: int):
             for zi in z.infolist()[:limit]:
                 yield {"name": zi.filename, "size": zi.file_size,
                        "compressed_size": zi.compress_size,
-                       "crc32": f"{zi.CRC:08x}", "is_dir": zi.is_dir()}
+                       "crc32": f"{zi.CRC:08x}", "is_dir": zi.is_dir(),
+                       "encrypted": bool(zi.flag_bits & 1), "compression_method": zi.compress_type}
         return
     cd_offset, cd_size, _ = located
     with open(path, "rb") as f:
@@ -162,16 +163,17 @@ def _iter_zip_members(path: str, limit: int):
             count += 1
             yield {"name": name, "size": uncomp_size,
                    "compressed_size": comp_size,
-                   "crc32": f"{crc32:08x}", "is_dir": name.endswith("/")}
+                   "crc32": f"{crc32:08x}", "is_dir": name.endswith("/"),
+                   "encrypted": bool(_flags & 1), "compression_method": _method}
 
 
 @registry.tool(
     name="archive.inventory",
     description="Inventory ZIP/TAR archive members and metadata without extraction. The member list is bounded by `limit` (peak memory stays proportional to `limit` even for very large archives).",
     safety=SafetyLevel.READ_ONLY,
-    parameters={"type":"object","properties":{"path":{"type":"string"},"limit":{"type":"integer","default":10000}},"required":["path"]},
+    parameters={"type":"object","properties":{"path":{"type":"string"},"limit":{"type":"integer","default":10000,"minimum":1,"maximum":50000},"offset":{"type":"integer","default":0,"minimum":0,"maximum":1000000}},"required":["path"]},
 )
-def archive_inventory(path: str, limit: int = 10000) -> Observation:
+def archive_inventory(path: str, limit: int = 10000, offset: int = 0) -> Observation:
     p=Path(path)
     if not p.is_file(): return Observation("archive.inventory",Status.ERROR,"Input is not a file",errors=[str(p)])
     members=[]
@@ -179,15 +181,19 @@ def archive_inventory(path: str, limit: int = 10000) -> Observation:
     try:
         if zipfile.is_zipfile(p):
             kind="zip"
-            for zi in _iter_zip_members(str(p), limit):
-                members.append(zi)
+            for index, zi in enumerate(_iter_zip_members(str(p), offset + limit + 1)):
+                if index >= offset:
+                    members.append(zi)
         elif tarfile.is_tarfile(p):
             kind="tar"
             with tarfile.open(p,"r:*") as t:
-                while len(members) < limit:
+                index = 0
+                while len(members) <= limit:
                     ti = t.next()
                     if ti is None:
                         break
+                    index += 1
+                    if index <= offset: continue
                     ttype = ("dir" if ti.isdir() else "file" if ti.isfile() else
                              "symlink" if ti.issym() else "hardlink" if ti.islnk() else
                              "fifo" if ti.isfifo() else "chr" if ti.ischr() else
@@ -197,19 +203,27 @@ def archive_inventory(path: str, limit: int = 10000) -> Observation:
             return Observation("archive.inventory",Status.UNSUPPORTED,"Unsupported archive format",meta={"source_sha256":sha256_file(p)})
     except Exception as e:
         return Observation("archive.inventory",Status.ERROR,"Archive parsing failed",errors=[f"{type(e).__name__}: {e}"],meta={"source_sha256":sha256_file(p)})
-    return Observation("archive.inventory",Status.OK,f"Inventoried {len(members)} {kind} member(s)",facts={"format":kind,"members":members,"member_count":len(members)},
+    more = len(members) > limit
+    members = members[:limit]
+    encrypted = [row['name'] for row in members if row.get('encrypted')]
+    warnings = ([f'{len(encrypted)} listed member(s) are encrypted; content has not been examined'] if encrypted else [])
+    if more: warnings.append('Archive listing is paged; continue with next_offset')
+    facts = {"format":kind,"members":members,"member_count":len(members), 'offset': offset,
+             'next_offset': offset + len(members) if more else None,
+             'encrypted_members': encrypted, 'content_examined': False}
+    return Observation("archive.inventory",Status.PARTIAL if warnings else Status.OK,f"Inventoried {len(members)} {kind} member(s)",facts=facts, warnings=warnings,
         evidence=[Evidence(str(p),"archive_inventory",f"{len(members)} members",locator="central-directory" if kind=="zip" else "member-table")],meta={"source_sha256":sha256_file(p)})
 
 @registry.tool(name='archive.extract_safe',description='Extract ZIP/TAR members into a separate workspace with path-traversal, symlink/junction, member-count and total-size limits. Source archive is never modified. Each extracted member is registered as a DerivedArtifact so the recovery chain is provable.',
  safety=SafetyLevel.STATEFUL,tags=('archive','workspace','extract'),produces=('extracted_files','derived_artifacts'),cost_hint='medium',
- parameters={'type':'object','properties':{'path':{'type':'string'},'output_dir':{'type':'string'},'member_limit':{'type':'integer','default':20000},'total_size_limit':{'type':'integer','default':2147483648},'overwrite':{'type':'boolean','default':False}},'required':['path','output_dir']},
+ parameters={'type':'object','properties':{'path':{'type':'string'},'output_dir':{'type':'string'},'member_limit':{'type':'integer','default':20000},'total_size_limit':{'type':'integer','default':2147483648},'overwrite':{'type':'boolean','default':False},'password':{'type':'string','description':'A single evidence-backed or user-provided ZIP password. No password guessing is performed.'}},'required':['path','output_dir']},
  path_roles={'path':'EVIDENCE_INPUT','output_dir':'WORKSPACE_OUTPUT'})
-def archive_extract_safe(path:str,output_dir:str,member_limit:int=20000,total_size_limit:int=2*1024*1024*1024,overwrite:bool=False)->Observation:
+def archive_extract_safe(path:str,output_dir:str,member_limit:int=20000,total_size_limit:int=2*1024*1024*1024,overwrite:bool=False,password:str|None=None)->Observation:
     from dftk import __version__ as DFTK_VERSION
     src=Path(path); out=Path(output_dir)
     if not src.is_file(): return Observation('archive.extract_safe',Status.ERROR,'Archive not found',errors=[str(src)])
     out.mkdir(parents=True,exist_ok=True)
-    root=out.resolve(); extracted=[]; derived=[]; total=0; warnings=[]
+    root=out.resolve(); extracted=[]; derived=[]; total=0; warnings=[]; blocked_members=[]
     # Provenance: the original archive is the root artifact; every extracted
     # member derives from it. This is the 3.5.0 fix for the STATEFUL gap — the
     # registry already validated both paths against their declared roles, so
@@ -236,7 +250,13 @@ def archive_extract_safe(path:str,output_dir:str,member_limit:int=20000,total_si
                     if info.is_dir(): dest.mkdir(parents=True,exist_ok=True); continue
                     if dest.exists() and not overwrite: warnings.append(f'skipped existing: {dest}'); continue
                     dest.parent.mkdir(parents=True,exist_ok=True)
-                    with z.open(info) as rf,dest.open('wb') as wf:
+                    try:
+                        rf = z.open(info, pwd=password.encode('utf-8') if password is not None else None)
+                    except (RuntimeError, NotImplementedError) as exc:
+                        blocked_members.append({'name': info.filename, 'reason_code': 'password_required' if password is None and info.flag_bits & 1 else 'password_or_encryption_unsupported', 'error': str(exc)})
+                        warnings.append(f'Content unavailable for {info.filename}; preserve this branch and continue other evidence')
+                        continue
+                    with rf,dest.open('wb') as wf:
                         while True:
                             chunk=rf.read(1024*1024)
                             if not chunk: break
@@ -248,7 +268,7 @@ def archive_extract_safe(path:str,output_dir:str,member_limit:int=20000,total_si
                     extracted.append({'path':str(dest),'relative':rel,'size':dest.stat().st_size,'sha256':member_sha})
                     art=prov.add(source_artifact=source_art.artifact_id,locator=f'archive_member:{rel}',
                                  tool='archive.extract_safe',version=DFTK_VERSION,sha256=member_sha,
-                                 size=dest.stat().st_size,state='LIVE')
+                                 size=dest.stat().st_size,state='LIVE',path=str(dest))
                     derived.append(art)
         elif tarfile.is_tarfile(src):
             with tarfile.open(src,'r:*') as t:
@@ -276,12 +296,12 @@ def archive_extract_safe(path:str,output_dir:str,member_limit:int=20000,total_si
                     extracted.append({'path':str(dest),'relative':rel,'size':dest.stat().st_size,'sha256':member_sha})
                     art=prov.add(source_artifact=source_art.artifact_id,locator=f'archive_member:{rel}',
                                  tool='archive.extract_safe',version=DFTK_VERSION,sha256=member_sha,
-                                 size=dest.stat().st_size,state='LIVE')
+                                 size=dest.stat().st_size,state='LIVE',path=str(dest))
                     derived.append(art)
         else: return Observation('archive.extract_safe',Status.UNSUPPORTED,'Unsupported archive format')
-    except (OSError,ValueError,zipfile.BadZipFile,tarfile.TarError) as e:
-        return Observation('archive.extract_safe',Status.ERROR,'Safe extraction failed',errors=[str(e)],facts={'extracted':extracted},warnings=warnings,derived_artifacts=derived)
-    return Observation('archive.extract_safe',Status.PARTIAL if warnings else Status.OK,f'Extracted {len(extracted)} file(s) into workspace',facts={'output_dir':str(root),'extracted':extracted,'total_bytes':total},evidence=[Evidence(str(src),'workspace_extract',str(root),locator='archive members',note='stateful workspace operation; source unchanged',artifact_id=source_art.artifact_id,derivation={'tool':'archive.extract_safe','version':DFTK_VERSION})],warnings=warnings,derived_artifacts=derived,meta={'source_sha256':source_sha,'provenance':prov.to_dict()})
+    except (OSError,ValueError,RuntimeError,NotImplementedError,zipfile.BadZipFile,tarfile.TarError) as e:
+        return Observation('archive.extract_safe',Status.ERROR,'Safe extraction failed',errors=[str(e)],facts={'extracted':extracted,'blocked_members':blocked_members},warnings=warnings,derived_artifacts=derived)
+    return Observation('archive.extract_safe',Status.PARTIAL if warnings else Status.OK,f'Extracted {len(extracted)} file(s) into workspace',facts={'output_dir':str(root),'extracted':extracted,'total_bytes':total,'blocked_members':blocked_members,'password_supplied':password is not None},evidence=[Evidence(str(src),'workspace_extract',str(root),locator='archive members',note='stateful workspace operation; source unchanged',artifact_id=source_art.artifact_id,derivation={'tool':'archive.extract_safe','version':DFTK_VERSION})],warnings=warnings,derived_artifacts=derived,meta={'source_sha256':source_sha,'provenance':prov.to_dict()})
 
 @registry.tool(name='file.strings_unicode',description='Extract bounded UTF-16LE/UTF-16BE printable strings with byte offsets; useful for Windows/native artifacts that ASCII strings miss.',
  safety=SafetyLevel.READ_ONLY,tags=('file','strings','unicode'),produces=('strings',),

@@ -35,6 +35,16 @@ def test_deterministic_ids():
     assert a.artifact_id == b.artifact_id
 
 
+def test_same_named_acquisitions_have_distinct_root_and_child_identities():
+    idx = ProvenanceIndex()
+    first = idx.add(source_artifact='', locator='file:phone.zip', tool='t', version='test', sha256='a' * 64)
+    second = idx.add(source_artifact='', locator='file:phone.zip', tool='t', version='test', sha256='b' * 64)
+    assert first.artifact_id != second.artifact_id
+    left = idx.add(source_artifact=first.artifact_id, locator='archive_member:photo.png', tool='t', version='test')
+    right = idx.add(source_artifact=second.artifact_id, locator='archive_member:photo.png', tool='t', version='test')
+    assert left.artifact_id != right.artifact_id
+
+
 def test_chain_walks_lineage():
     idx = ProvenanceIndex()
     root = idx.add(source_artifact="", locator="file:phone.zip", tool="t", version="3.5.0")

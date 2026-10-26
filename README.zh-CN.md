@@ -96,7 +96,7 @@ dftk skill --install --target all --dry-run
 - [外部工具链部署](DEPLOY-TOOLCHAIN.md) — 外部取证二进制工具。
 - [开发指南](docs/development.md) — 环境、测试和贡献流程。
 
-一个注册表，128 个工具（124 个 `READ_ONLY`、4 个 `STATEFUL`）——113 个原语加 15 个配方。
+一个注册表，136 个工具（131 个 `READ_ONLY`、5 个 `STATEFUL`）——121 个原语加 15 个配方。
 
 事件链狩猎：`timeline.hunt_sequences` 按共享实体字段关联有序事件，保留来源哈希、
 记录定位与分析覆盖限制。可运行示例见[事件链狩猎指南](docs/sequence-hunting.md)。
@@ -109,3 +109,5 @@ dftk skill --install --target all --dry-run
 - 维护者：[DyNooob](https://github.com/DyNooob) · [DigiForensics](https://www.digiforensics.cn)。
 
 DFTK 用于合法、已获授权的证据检验，不构成法律建议。
+
+图片/视频证据与 OCR：[媒体感知与授权](docs/media-perception.md)。模型视觉需要用户授权与图像支持；OCR 优先 GPU，CPU 运行须另获用户同意。

@@ -874,7 +874,7 @@ def http_sessions(path:str,output_dir:str,packet_limit:int=200000,max_sessions:i
                 art=prov.add(source_artifact=source_art.artifact_id,
                              locator=f'http_response:{i}:{rmeta.get("host","")}{rmeta.get("target","")}',
                              tool='network.http_sessions',version=DFTK_VERSION,
-                             sha256=body_sha,size=len(sbody),state='LIVE')
+                             sha256=body_sha,size=len(sbody),state='LIVE',path=str(dest))
                 derived.append(art)
                 extracted.append({'path':str(dest),'sha256':body_sha,'size':len(sbody),'host':rmeta.get('host'),'target':rmeta.get('target'),'content_type':smeta.get('content_type'),'magic':_magic_of(sbody)})
                 entry['extracted']=True; entry['body_sha256']=body_sha

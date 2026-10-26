@@ -143,6 +143,7 @@ class ToolRegistry:
                 allow_network=policy.allow_network and parent_policy.allow_network,
                 evidence_root=parent_policy.evidence_root or policy.evidence_root,
                 workspace_root=parent_policy.workspace_root or policy.workspace_root,
+                derived_inputs=parent_policy.derived_inputs,
             )
         params = dict(params) if isinstance(params, dict) else params
         audit = audit or _get_default_audit_log()
@@ -186,6 +187,7 @@ class ToolRegistry:
                     spec.path_roles,
                     evidence_root=policy.evidence_root,
                     workspace_root=policy.workspace_root,
+                    derived_inputs=policy.derived_inputs,
                 )
             except PathEscapeError as e:
                 out = Observation(

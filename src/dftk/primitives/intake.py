@@ -11,6 +11,7 @@ from dftk.core.helpers import bounded_files, safe_rel, TraversalReport
 from dftk.core.models import Evidence, Observation, SafetyLevel, Status
 from dftk.core.registry import registry
 from dftk.core.safety import SafetyPolicy
+from dftk.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, media_type
 
 
 _EXTENSION_HINTS = {
@@ -19,10 +20,15 @@ _EXTENSION_HINTS = {
     ".evtx": "evtx", ".e01": "ewf_e01", ".zip": "zip", ".jar": "jar_or_zip",
     ".exe": "pe", ".dll": "pe", ".so": "elf", ".elf": "elf",
 }
+_EXTENSION_HINTS.update({suffix: 'image_hint' for suffix in IMAGE_EXTENSIONS})
+_EXTENSION_HINTS.update({suffix: 'video_hint' for suffix in VIDEO_EXTENSIONS})
+_EXTENSION_HINTS.update({'.enc': 'encrypted_hint', '.7z': '7z', '.rar': 'rar', '.tar': 'tar', '.tgz': 'gzip'})
 
 
 def _route(kind: str, path: str, filename: str) -> dict[str, Any] | None:
     """Return one conservative next DFTK call for an identified artifact."""
+    if media_type(kind, filename):
+        return {'tool': 'media.inspect', 'params': {'path': path}, 'reason': 'media metadata only; visual content requires user consent and a capable model'}
     if kind == "apk":
         return {"tool": "recipe.android.deep_static_triage", "params": {"path": path}, "reason": "Android package"}
     if kind in {"pcap", "pcapng"}:
@@ -42,8 +48,12 @@ def _route(kind: str, path: str, filename: str) -> dict[str, Any] | None:
         return {"tool": "windows.registry_inventory", "params": {"path": path}, "reason": "Windows Registry hive"}
     if kind == "ewf_e01":
         return {"tool": "image.e01_inventory", "params": {"path": path}, "reason": "E01/EWF image"}
-    if kind in {"zip", "jar_or_zip"}:
+    if kind in {"zip", "jar_or_zip", "tar", "gzip"}:
         return {"tool": "archive.inventory", "params": {"path": path}, "reason": "archive container"}
+    if kind == 'evtx':
+        return {'tool': 'windows.evtx_summary', 'params': {'path': path}, 'reason': 'Windows event log'}
+    if Path(filename).suffix.lower() in {'.txt', '.log', '.json', '.xml', '.csv', '.ini', '.conf', '.env', '.yaml', '.yml', '.md'}:
+        return {'tool': 'file.read_text', 'params': {'path': path}, 'reason': 'bounded text window; follow continuation if needed'}
     return None
 
 
@@ -71,11 +81,12 @@ def _directory_routes(root: Path) -> list[dict[str, Any]]:
             "path": {"type": "string", "description": "Evidence file or extracted evidence directory."},
             "max_files": {"type": "integer", "default": 5000, "minimum": 1, "maximum": 50000},
             "inspect_limit": {"type": "integer", "default": 200, "minimum": 1, "maximum": 1000},
+            "offset": {"type": "integer", "default": 0, "minimum": 0, "maximum": 1000000},
         },
         "required": ["path"],
     },
 )
-def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200) -> Observation:
+def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200, offset: int = 0) -> Observation:
     """Inventory evidence without extraction or mutation, then propose bounded routes."""
     source = Path(path)
     if not source.exists():
@@ -85,7 +96,7 @@ def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200) 
 
     root = source if source.is_dir() else source.parent
     traversal = TraversalReport()
-    files = list(bounded_files(source, max_files=max_files, report=traversal)) if source.is_dir() else [source]
+    files = list(bounded_files(source, max_files=offset + max_files, report=traversal))[offset:] if source.is_dir() else [source]
     extension_counts: Counter[str] = Counter()
     kinds: Counter[str] = Counter()
     candidates: list[dict[str, Any]] = []
@@ -135,6 +146,17 @@ def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200) 
                 warnings.append(f"inspection failed for {item}: {observation.status.value}")
             warnings.extend(f"{item}: {warning}" for warning in observation.warnings)
         kind = row["kind"]
+        row['content_examined'] = False
+        if category := media_type(kind, item.name):
+            row.update(media_type=category, review_state='awaiting_visual_consent_or_local_ocr')
+        elif kind in {'openssl_salted', 'encrypted_hint'}:
+            row.update(review_state='encrypted_content_unread', encryption_basis='signature' if kind == 'openssl_salted' else 'extension_hint')
+        elif kind in {'7z', 'rar'}:
+            row.update(review_state='container_parser_unavailable')
+        elif not row['inspected']:
+            row['review_state'] = 'not_inspected'
+        elif kind == 'unknown':
+            row['review_state'] = 'unclassified'
         kinds[kind] += 1
         route = _route(kind, str(item), item.name)
         if route:
@@ -182,6 +204,11 @@ def evidence_intake(path: str, max_files: int = 5000, inspect_limit: int = 200) 
         "total_size": sum(item["size"] for item in candidates),
         "extension_counts": dict(extension_counts.most_common()), "kind_counts": dict(kinds.most_common()),
         "candidates": candidates, "next_steps": routes,
+        "offset": offset,
+        "next_offset": offset + len(files) if traversal.truncated else None,
+        "next_inspection": {'tool': 'evidence.intake', 'params': {'path': path, 'offset': offset + inspect_limit, 'max_files': inspect_limit, 'inspect_limit': inspect_limit}} if len(files) > inspect_limit else None,
+        "media_found": [row['path'] for row in candidates if row.get('media_type')],
+        "unread_content": [{'path': row['path'], 'reason': row['review_state']} for row in candidates if row.get('review_state')],
     }
     return Observation(
         "evidence.intake", Status.PARTIAL if warnings else Status.OK,

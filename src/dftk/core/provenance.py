@@ -69,6 +69,7 @@ class DerivedArtifact:
     state: str = "LIVE"   # LIVE | DELETED_CANDIDATE | CARVED | PARTIAL | RECOVERED
     kind: str = "derived"
     note: str = ""
+    path: str = ""             # concrete derived output; empty for virtual/source nodes
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -85,6 +86,7 @@ class DerivedArtifact:
             state=data.get("state", "LIVE"),
             kind=data.get("kind", "derived"),
             note=data.get("note", ""),
+            path=data.get("path", ""),
         )
 
 
@@ -121,8 +123,12 @@ class ProvenanceIndex:
         kind: str = "derived",
         note: str = "",
         params: dict[str, Any] | None = None,
+        path: str = "",
     ) -> DerivedArtifact:
-        artifact_id = self._next_id(source_artifact, locator)
+        # Different acquisitions can share a basename/locator. A known root
+        # digest is part of source identity; persisted historical IDs still load.
+        identity_locator = f'{sha256}|{locator}' if not source_artifact and sha256 else locator
+        artifact_id = self._next_id(source_artifact, identity_locator)
         art = DerivedArtifact(
             artifact_id=artifact_id,
             source_artifact=source_artifact,
@@ -133,6 +139,7 @@ class ProvenanceIndex:
             state=state,
             kind=kind,
             note=note,
+            path=path,
         )
         self._by_id[artifact_id] = art
         return art

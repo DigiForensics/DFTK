@@ -17,6 +17,7 @@ import importlib.metadata
 import os
 import platform
 import sys
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -227,6 +228,17 @@ def doctor_report() -> dict[str, Any]:
             "network_declared": network_tools,
         },
         "readiness": readiness,
+        'media_perception': {
+            'visual_consent_required': True,
+            'model_image_support_must_be_confirmed': True,
+            'ocr_gpu_priority': ['cuda', 'mps'],
+            'ocr_cpu_fallback_automatic': False,
+            'ocr_device_detection': 'per OCR invocation; doctor does not initialise GPU models',
+            'ocr_model_directory': str(Path(os.environ.get('DFTK_OCR_MODEL_DIR', '~/.EasyOCR/model')).expanduser()),
+            'ocr_model_directory_exists': Path(os.environ.get('DFTK_OCR_MODEL_DIR', '~/.EasyOCR/model')).expanduser().is_dir(),
+            'ffmpeg_available': shutil.which('ffmpeg') is not None,
+            'ffprobe_available': shutil.which('ffprobe') is not None,
+        },
         "mcp": {
             "installed": mcp_installed,
             "version": mcp_version,

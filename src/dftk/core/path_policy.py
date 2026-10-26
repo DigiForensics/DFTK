@@ -92,6 +92,7 @@ def validate_path(
     *,
     evidence_root: Path | None = None,
     workspace_root: Path | None = None,
+    derived_inputs: dict[str, str] | None = None,
 ) -> Path:
     """Resolve and containment-check one path parameter.
 
@@ -139,6 +140,13 @@ def validate_path(
         return resolved
 
     if not _contained(resolved, Path(root)):
+        if (role == PathRole.EVIDENCE_INPUT and workspace_root is not None
+                and _contained(resolved, Path(workspace_root))
+                and (expected := (derived_inputs or {}).get(str(resolved)))):
+            from .helpers import sha256_file
+            if not resolved.is_file() or sha256_file(resolved) != expected:
+                raise PathEscapeError(f"registered derived evidence changed or is missing: {raw!r}")
+            return resolved
         raise PathEscapeError(
             f"path {raw!r} ({role.value}) escapes authorised root {Path(root)}"
         )
@@ -156,6 +164,7 @@ def validate_params(
     *,
     evidence_root: Path | None = None,
     workspace_root: Path | None = None,
+    derived_inputs: dict[str, str] | None = None,
 ) -> dict[str, Path | list[Path]]:
     """Validate every declared path parameter.
 
@@ -171,7 +180,7 @@ def validate_params(
             continue  # optional path omitted by the caller
         if isinstance(value, list):
             resolved[name] = [validate_path(item, PathRole(role_str), evidence_root=evidence_root,
-                                           workspace_root=workspace_root) for item in value]
+                                           workspace_root=workspace_root, derived_inputs=derived_inputs) for item in value]
             continue
         if not isinstance(value, str):
             raise PathEscapeError(f"path parameter {name!r} must be a string, got {type(value).__name__}")
@@ -181,5 +190,6 @@ def validate_params(
             role,
             evidence_root=evidence_root,
             workspace_root=workspace_root,
+            derived_inputs=derived_inputs,
         )
     return resolved

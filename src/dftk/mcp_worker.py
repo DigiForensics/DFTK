@@ -112,7 +112,8 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
         obs_d = obs.to_dict()
         # The top-level ok MUST mirror the observation status so a client that
         # branches on ok does not mistake an unsupported/error run for success.
-        return {"ok": obs_d.get("status") in _SUCCESS_STATUSES, "observation": obs_d}
+        return {"ok": obs_d.get("status") in _SUCCESS_STATUSES, "observation": obs_d,
+                "presentation": obs.presentation}
 
     if action == "case_guided_intake":
         session = CaseSession(Path(str(request["workspace"])))
@@ -137,12 +138,14 @@ def _execute(request: dict[str, Any]) -> dict[str, Any]:
             caller=f"mcp:case:{case_id}",
             evidence_root=request.get("evidence_root"),
             workspace_root=request.get("workspace_root"),
+            attempt_id=request.get('attempt_id'),
         )
         obs_d = obs.to_dict()
         return {
             "ok": obs_d.get("status") in _SUCCESS_STATUSES,
             "observation": obs_d,
             "case_run": entry,
+            "presentation": obs.presentation,
         }
 
     raise ValueError(f"unknown worker action: {action!r}")

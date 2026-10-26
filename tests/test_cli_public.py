@@ -101,7 +101,7 @@ def test_cli_exports_versioned_capability_manifest(tmp_path, capsys):
     assert manifest["schema_version"] == "3"
     assert manifest["tool_count"] == len(manifest["tools"])
     assert sum(manifest["safety_counts"].values()) == manifest["tool_count"]
-    assert manifest["safety_counts"]["STATEFUL"] == 4
+    assert manifest["safety_counts"]["STATEFUL"] == 5
     capsys.readouterr()
 
 

@@ -44,6 +44,11 @@ from typing import Any
 
 _EXTERNAL_TOOLS: list[dict[str, Any]] = [
     {
+        'name': 'openssl', 'category': 'crypto',
+        'purpose': 'One evidence-backed decryption attempt with explicit cipher/KDF parameters',
+        'binaries': ['openssl'], 'extra_dirs_env': 'DFTK_CRYPTO_TOOL_DIRS',
+    },
+    {
         "name": "jadx",
         "category": "apk",
         "purpose": "Android DEX/Dalvik decompiler for static APK analysis",

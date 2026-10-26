@@ -331,6 +331,14 @@ def _cmd_case(args):
     if cmd == "list":
         _emit(session.list())
         return 0
+    if cmd in {'artifacts', 'note-artifact'}:
+        try:
+            result = session.artifacts(args.case_id, offset=args.offset, limit=args.limit) if cmd == 'artifacts' else session.note_artifact(args.case_id, args.path, args.disposition, args.reason)
+        except CaseError as exc:
+            _emit({'error': str(exc)})
+            return 2
+        _emit(result)
+        return 0
     if cmd == "run":
         try:
             params = _load_params(args)
@@ -723,6 +731,15 @@ def main(argv=None):
     case_new = case_sub.add_parser("new", help="create a new case and print its manifest")
     case_new.add_argument("--name")
     case_sub.add_parser("list", help="list cases in the workspace")
+    case_artifacts = case_sub.add_parser('artifacts', help='page the merged source/derived evidence inventory')
+    case_artifacts.add_argument('case_id')
+    case_artifacts.add_argument('--offset', type=int, default=0)
+    case_artifacts.add_argument('--limit', type=int, default=100)
+    case_note = case_sub.add_parser('note-artifact', help='record an Agent review disposition with a reason')
+    case_note.add_argument('case_id')
+    case_note.add_argument('path', help='recorded absolute artifact path')
+    case_note.add_argument('--disposition', required=True, choices=['reviewed', 'deferred', 'user_declined', 'model_unsupported', 'not_relevant'])
+    case_note.add_argument('--reason', required=True)
     case_graph = case_sub.add_parser("graph", help="correlate entities across persisted Case Observations")
     case_graph.add_argument("case_id")
     case_next = case_sub.add_parser("next", help="show compact, deterministic Agent next actions for a Case")

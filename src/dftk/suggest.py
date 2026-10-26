@@ -29,6 +29,9 @@ from typing import Any
 
 from .core.registry import ToolRegistry, registry
 from .core.safety import SafetyPolicy
+from .core.capability_query import expand_query
+from .core.readiness import tool_readiness
+from .core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 # File extension -> forensic evidence kind(s). Order does not matter; ranking
 # is by match specificity later.
@@ -83,7 +86,10 @@ _EXTENSION_KINDS: dict[str, list[str]] = {
     ".tar": ["archive"],
     ".tgz": ["archive"],
     ".7z": ["archive"],
+    ".enc": ["encrypted"],
 }
+_EXTENSION_KINDS.update({suffix: ['media', 'image'] for suffix in IMAGE_EXTENSIONS})
+_EXTENSION_KINDS.update({suffix: ['media', 'video'] for suffix in VIDEO_EXTENSIONS})
 
 # Well-known forensic basenames (case-insensitive) -> kind(s). These catch the
 # extension-less carves that are bread-and-butter in real investigations.
@@ -130,6 +136,7 @@ _WELLKNOWN: dict[str, list[str]] = {
 # is actually readable, so a planning Agent can still query a not-yet-fetched
 # path. Carved evidence frequently has no extension, so this matters.
 _MAGIC_KINDS: list[tuple[bytes, int, list[str]]] = [
+    (b'Salted__', 0, ['openssl', 'encrypted']),
     (b'\xce\xfa\xed\xfe', 0, ["macho", "macos", "binary"]),
     (b'\xfe\xed\xfa\xce', 0, ["macho", "macos", "binary"]),
     (b'\xcf\xfa\xed\xfe', 0, ["macho", "macos", "binary"]),
@@ -266,7 +273,7 @@ def suggest(
         except (OSError, ValueError, RuntimeError):
             if evidence_root is not None:
                 return error("cannot resolve query inside MCP evidence root")
-    text_kinds = sorted(_tokens(query))
+    text_kinds = sorted(_tokens(expand_query(query)))
     if not hints:
         hints = [("query", query, text_kinds if direction == "produce" or not _is_path_like(query) else [])]
     inferred = sorted({kind for _, _, kinds in hints for kind in kinds})
@@ -313,6 +320,7 @@ def suggest(
             "requires": list(spec.requires), "deterministic": spec.deterministic,
             "cost_hint": spec.cost_hint, "parameters": spec.parameters,
             "path_roles": spec.path_roles,
+            'readiness': tool_readiness(spec),
             "why": reasons[0][1], "reasons": [reason for _, reason in reasons],
             "score": reasons[0][0],
             **({"policy_allowed": not blocked, "policy_blockers": blocked} if policy is not None else {}),

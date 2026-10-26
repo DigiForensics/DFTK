@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 import importlib.metadata
 import json
 import os
@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import uuid
 
 from .catalog import load_builtin_tools
 from . import suggest as _suggest
@@ -26,6 +27,8 @@ from .core.case import CaseError, CaseSession, default_workspace
 from .core.models import SafetyLevel
 from .core.safety import SafetyPolicy
 from .core.registry import registry
+from .core.readiness import tool_readiness
+from .core.capability_query import expand_query
 from .doctor import _mcp_version_supported, doctor_report
 from . import __version__ as _TOOLKIT_VERSION
 
@@ -35,30 +38,12 @@ _MAX_MODEL_RESULT_BYTES = 512 * 1024
 _MAX_QUERY_CHARS = 4096
 _DEFAULT_TIMEOUT = 180
 
-_QUERY_ALIASES = {
-    "通讯录": "contacts android mobile sqlite",
-    "联系人": "contacts android mobile sqlite",
-    "短信": "sms message android mobile sqlite",
-    "通话": "call android mobile sqlite",
-    "域名": "domain url endpoint network",
-    "网址": "url endpoint network",
-    "服务器": "server endpoint linux network",
-    "登录": "login auth authentication",
-    "数据库": "database sqlite sql",
-    "流量": "pcap network dns http tls",
-    "注册表": "registry windows",
-    "浏览器": "browser chromium firefox",
-    "时间": "time timestamp timeline",
-    "哈希": "hash sha256 artifact",
-    "邮件": "email mime dkim spf",
-}
-
 _PATH_KEY_RE = re.compile(
     r"(?:^|_)(?:path|root|file|files|dir|directory|database|db|hive|capture|pcap|archive|image|source|sources|input|inputs|output|dest|destination|identity)(?:$|_)",
     re.I,
 )
 _NON_PATH_TEXT_KEY_RE = re.compile(
-    r"(?:^|_)(?:query|needle|pattern|regex|regexp|expression|text|value|contains|param|params|url|uri|endpoint|host|domain|keyword|term|sql)(?:$|_)",
+    r"(?:^|_)(?:query|needle|pattern|regex|regexp|expression|text|value|contains|param|params|url|uri|endpoint|host|domain|keyword|term|sql|password|key_evidence)(?:$|_)",
     re.I,
 )
 _WINDOWS_ABS_RE = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\)")
@@ -81,6 +66,7 @@ def _spec_dict(spec: Any) -> dict[str, Any]:
         "deterministic": bool(spec.deterministic),
         "cost_hint": spec.cost_hint,
         "path_roles": spec.path_roles,
+        'readiness': tool_readiness(spec),
     }
 
 
@@ -94,7 +80,8 @@ def _bounded(value: dict[str, Any], *, guidance: str = "Use a DFTK case and dftk
         return value
     preview = raw[: _MAX_MODEL_RESULT_BYTES // 2].decode("utf-8", errors="replace")
     return {
-        "ok": True,
+        "ok": value.get("ok", False),
+        "status": value.get("status"),
         "truncated": True,
         "original_bytes": len(raw),
         "preview_json": preview,
@@ -125,6 +112,7 @@ def _bounded_run_result(result: dict[str, Any]) -> dict[str, Any]:
             "evidence_total": len(evidence),
             "evidence_preview": evidence[:10],
             "fact_keys": sorted(facts.keys()) if isinstance(facts, dict) else [],
+            'fact_pointers': ['/' + key.replace('~', '~0').replace('/', '~1') for key in facts] if isinstance(facts, dict) else [],
         },
         "guidance": (
             "The full case-scoped Observation is persisted. Use dftk_read_case_run with "
@@ -240,7 +228,11 @@ def _fact_path(value: Any, path: str) -> Any:
     current = value
     if not path:
         return current
-    for part in path.split("."):
+    # JSON Pointer addresses keys containing dots/slashes without ambiguity.
+    if isinstance(value, dict) and not path.startswith('/') and path in value:
+        return value[path]
+    parts = [part.replace("~1", "/").replace("~0", "~") for part in path[1:].split("/")] if path.startswith("/") else path.split(".")
+    for part in parts:
         if isinstance(current, dict):
             if part not in current:
                 raise KeyError(f"fact path not found: {path}")
@@ -335,17 +327,16 @@ class DFTKMCPGateway:
 
     def search(self, query: str = "", tags: list[str] | None = None, produces: str | None = None, limit: int = 12) -> dict[str, Any]:
         query = (query or "").strip()
-        expanded = [query]
-        for key, replacement in _QUERY_ALIASES.items():
-            if key in query:
-                expanded.append(replacement)
-        query = " ".join(part for part in expanded if part).strip()
+        query = expand_query(query).strip()
         if len(query) > _MAX_QUERY_CHARS:
             raise ValueError("query is too long")
         limit = min(max(1, int(limit)), 50)
         specs = list(registry.find(tags=tags, produces=produces))
         if query:
             words = [w for w in re.findall(r"[a-zA-Z0-9_.:-]+", query.lower()) if w]
+            if not words:
+                return {'ok': True, 'count': 0, 'results': [],
+                        'guidance': 'No supported search terms recognised; name the evidence type or use dftk_suggest with a file path. No capabilities were selected.'}
             ranked: list[tuple[int, str, Any]] = []
             for spec in specs:
                 hay = " ".join([
@@ -362,7 +353,8 @@ class DFTKMCPGateway:
             specs = [x[2] for x in ranked]
         else:
             specs.sort(key=lambda x: x.name)
-        return {"ok": True, "count": min(len(specs), limit), "results": [_spec_dict(s) for s in specs[:limit]]}
+        return {"ok": True, "count": min(len(specs), limit), "results": [{**_spec_dict(s),
+            'policy_allowed': s.safety <= SafetyLevel[self.max_safety] and (not s.network or self.allow_network)} for s in specs[:limit]]}
 
     def describe(self, name: str) -> dict[str, Any]:
         try:
@@ -412,8 +404,16 @@ class DFTKMCPGateway:
                     except ProcessLookupError:
                         pass
                 proc.wait(timeout=10)
+                if request.get('case_id'):
+                    CaseSession(self.workspace).record_failed_attempt(str(request['case_id']),
+                        request.get('attempt_id') or uuid.uuid4().hex, str(request.get('name', request.get('action'))),
+                        f'Worker timed out after {self.timeout_seconds}s; no complete Observation returned')
                 raise TimeoutError(f"DFTK capability exceeded MCP timeout ({self.timeout_seconds}s)")
             if not resp.exists():
+                if request.get('case_id'):
+                    CaseSession(self.workspace).record_failed_attempt(str(request['case_id']),
+                        request.get('attempt_id') or uuid.uuid4().hex, str(request.get('name', request.get('action'))),
+                        f'Worker exited {proc.returncode} without a response')
                 raise RuntimeError(f"DFTK worker exited {proc.returncode} without a response")
             data = _read_json(resp)
             # A genuine crash is marked with ``error_type`` and carries no
@@ -424,10 +424,14 @@ class DFTKMCPGateway:
             # discard that structured failure and replace it with a generic
             # RuntimeError.
             if "error_type" in data:
+                if request.get('case_id'):
+                    CaseSession(self.workspace).record_failed_attempt(str(request['case_id']),
+                        request.get('attempt_id') or uuid.uuid4().hex, str(request.get('name', request.get('action'))),
+                        f"Worker {data.get('error_type')}: {data.get('error', 'unknown error')}")
                 raise RuntimeError(f"DFTK worker {data.get('error_type')}: {data.get('error', 'unknown error')}")
             return data
 
-    def run(self, name: str, params: dict[str, Any] | None = None, case_id: str | None = None) -> dict[str, Any]:
+    def run(self, name: str, params: dict[str, Any] | None = None, case_id: str | None = None, *, include_presentation: bool = False) -> dict[str, Any]:
         params = dict(params or {})
         try:
             spec = registry.get(name)
@@ -455,6 +459,7 @@ class DFTKMCPGateway:
             "allow_network": self.allow_network,
             "evidence_root": str(self.root),
             "workspace_root": str(self.workspace),
+            'attempt_id': uuid.uuid4().hex,
         }
         if self.audit_path is not None:
             request["audit"] = str(self.audit_path)
@@ -475,9 +480,13 @@ class DFTKMCPGateway:
         }
         if case_id:
             result["case_run"] = data.get("case_run")
-        return _bounded_run_result(result)
+        result = _bounded_run_result(result)
+        if include_presentation and data.get("presentation"):
+            result["presentation"] = data["presentation"]
+        return result
 
-    def case(self, action: str, case_id: str | None = None, name: str | None = None, format: str = "json", path: str | None = None, objective: str | None = None, max_steps: int = 2) -> dict[str, Any]:
+    def case(self, action: str, case_id: str | None = None, name: str | None = None, format: str = "json", path: str | None = None, objective: str | None = None, max_steps: int = 2,
+             offset: int = 0, limit: int = 100, disposition: str | None = None, reason: str = '') -> dict[str, Any]:
         session = CaseSession(self.workspace)
         action = str(action or "").lower()
         with self._lock:
@@ -490,10 +499,18 @@ class DFTKMCPGateway:
             _require_case(session, case_id)
             if action == "show":
                 return _bounded({"ok": True, "case": session.show(case_id)})
+            if action == 'artifacts':
+                return _bounded({'ok': True, 'artifacts': session.artifacts(case_id, offset=offset, limit=limit)})
+            if action == 'note_artifact':
+                return {'ok': True, 'artifact': session.note_artifact(case_id, path or '', disposition or '', reason)}
             if action == "timeline":
-                return _bounded({"ok": True, "observation": session.timeline(case_id).to_dict()})
+                result = _bounded({"ok": True, "observation": session.timeline(case_id).to_dict()})
+                session.mark_view(case_id, 'timeline')
+                return result
             if action == "graph":
-                return _bounded({"ok": True, "observation": session.entity_graph(case_id).to_dict()})
+                result = _bounded({"ok": True, "observation": session.entity_graph(case_id).to_dict()})
+                session.mark_view(case_id, 'graph')
+                return result
             if action == "next":
                 return _bounded({"ok": True, "next_actions": session.next_actions(case_id)})
             if action == "guided_intake":
@@ -517,7 +534,7 @@ class DFTKMCPGateway:
                     raise ValueError("format must be 'json' or 'md'")
                 text = session.export(case_id, fmt=format)
                 return _bounded({"ok": True, "format": format, "report": text})
-        raise ValueError("case action must be one of: new, list, show, guided_intake, next, brief, coverage, timeline, graph, export")
+        raise ValueError("case action must be one of: new, list, show, artifacts, note_artifact, guided_intake, next, brief, coverage, timeline, graph, export")
 
     def read_case_run(
         self,
@@ -529,10 +546,13 @@ class DFTKMCPGateway:
         fact_path: str = "",
         value_offset: int = 0,
         value_limit: int = 50,
+        section: str = 'facts',
     ) -> dict[str, Any]:
         session = CaseSession(self.workspace)
         _require_case(session, case_id)
         target, obs = session.read_run(case_id, seq)
+        if section not in {'facts', 'meta', 'derived_artifacts'}:
+            raise ValueError('section must be facts, meta or derived_artifacts')
         evidence = list(obs.get("evidence") or [])
         evidence_offset = max(0, int(evidence_offset))
         evidence_limit = min(max(1, int(evidence_limit)), 100)
@@ -550,12 +570,17 @@ class DFTKMCPGateway:
                 "evidence_offset": evidence_offset,
                 "evidence": evidence[evidence_offset : evidence_offset + evidence_limit],
                 "fact_keys": sorted((obs.get("facts") or {}).keys()) if isinstance(obs.get("facts"), dict) else [],
-                "meta": obs.get("meta") or {},
+                "meta": {key: value for key, value in (obs.get("meta") or {}).items()
+                         if key not in {"children", "provenance"}},
+                'meta_keys': list((obs.get('meta') or {}).keys()),
+                'derived_artifacts_total': len(obs.get('derived_artifacts') or []),
+                "fact_pointers": ["/" + key.replace("~", "~0").replace("/", "~1")
+                                  for key in (obs.get("facts") or {})],
             },
         }
-        if fact_path:
-            value = _fact_path(obs.get("facts") or {}, fact_path)
-            result["fact"] = {"path": fact_path, **_page_value(value, value_offset, value_limit)}
+        if fact_path or section != 'facts':
+            value = _fact_path(obs.get(section, [] if section == 'derived_artifacts' else {}), fact_path)
+            result["fact"] = {"path": fact_path, 'section': section, **_page_value(value, value_offset, value_limit)}
         return _bounded(result, guidance="Use evidence_offset/evidence_limit or fact_path/value_offset/value_limit to page this persisted Observation.")
 
 
@@ -580,6 +605,14 @@ def create_server(gateway: DFTKMCPGateway):
 
     server = MCPServer("DFTK")
 
+    def visual_result(result: dict[str, Any]):
+        from mcp.types import CallToolResult, ImageContent, TextContent
+        # Pixels live only in native image content, never duplicated into JSON.
+        presentation = result.pop("presentation", [])
+        return CallToolResult(content=[TextContent(text=json.dumps(result, ensure_ascii=False, default=str))]
+            + [ImageContent(data=item["data"], mime_type=item["mime_type"]) for item in presentation],
+            structured_content=result, is_error=not result.get("ok", False))
+
     @server.tool()
     def dftk_doctor() -> dict[str, Any]:
         """Return DFTK capability health and the server-owned MCP safety/root policy."""
@@ -601,14 +634,38 @@ def create_server(gateway: DFTKMCPGateway):
         return _safe("dftk_suggest", lambda: gateway.suggest(query=query, direction=direction, limit=limit))
 
     @server.tool()
-    def dftk_run(name: str, params: dict[str, Any] | None = None, case_id: str | None = None) -> dict[str, Any]:
+    def dftk_run(name: str, params: dict[str, Any] | None = None, case_id: str | None = None) -> Any:
         """Execute one DFTK capability under server-owned safety/network/root policy; optionally persist it in an existing DFTK case."""
-        return _safe("dftk_run", lambda: gateway.run(name=name, params=params, case_id=case_id))
+        result = _safe("dftk_run", lambda: gateway.run(name=name, params=params, case_id=case_id,
+                                                     include_presentation=name in {'media.preview', 'media.contact_sheet'}))
+        return visual_result(result)
 
     @server.tool()
-    def dftk_case(action: str, case_id: str | None = None, name: str | None = None, format: str = "json", path: str | None = None, objective: str | None = None, max_steps: int = 2) -> dict[str, Any]:
+    def dftk_view_media(path: str | None = None, user_authorized: bool = False, model_supports_images: bool = False,
+                        case_id: str | None = None, start_seconds: float = 0,
+                        interval_seconds: float = 5, frame_count: int = 1, max_dimension: int = 1280,
+                        crop_box: list[int] | None = None, paths: list[str] | None = None) -> Any:
+        """Show native images ONLY after scoped user consent and confirmed model image support. Use path for one image, an optional source-pixel crop_box, or timestamped video samples; use paths instead for a numbered still-image contact sheet. Both attestations default false: otherwise report found media without pixels. Video samples exclude audio/unsampled content. Local OCR is separate (GPU first; CPU needs explicit consent)."""
+        def view():
+            if (path is None) == (paths is None):
+                raise ValueError('Provide exactly one of path (single preview/crop) or paths (still-image contact sheet)')
+            if paths is not None:
+                if crop_box is not None:
+                    raise ValueError('crop_box applies to a single image; select path instead of paths')
+                return gateway.run('media.contact_sheet', {'paths': paths, 'user_authorized': user_authorized,
+                    'model_supports_images': model_supports_images}, case_id=case_id, include_presentation=True)
+            return gateway.run('media.preview', {
+                'path': path, 'user_authorized': user_authorized, 'model_supports_images': model_supports_images,
+                'start_seconds': start_seconds, 'interval_seconds': interval_seconds, 'crop_box': crop_box,
+                'frame_count': frame_count, 'max_dimension': max_dimension}, case_id=case_id, include_presentation=True)
+        return visual_result(_safe('dftk_view_media', view))
+
+    @server.tool()
+    def dftk_case(action: Literal['new', 'list', 'show', 'artifacts', 'note_artifact', 'guided_intake', 'next', 'brief', 'coverage', 'timeline', 'graph', 'export'], case_id: str | None = None, name: str | None = None, format: str = "json", path: str | None = None, objective: str | None = None, max_steps: int = 2,
+                  offset: int = 0, limit: int = 100, disposition: Literal['reviewed', 'deferred', 'user_declined', 'model_unsupported', 'not_relevant'] | None = None, reason: str = '') -> dict[str, Any]:
         """Manage a Case. guided_intake persists child runs; brief restores Agent context; next, coverage, timeline, graph, and export work over persisted runs."""
-        return _safe("dftk_case", lambda: gateway.case(action=action, case_id=case_id, name=name, format=format, path=path, objective=objective, max_steps=max_steps))
+        return _safe("dftk_case", lambda: gateway.case(action=action, case_id=case_id, name=name, format=format, path=path, objective=objective, max_steps=max_steps,
+            offset=offset, limit=limit, disposition=disposition, reason=reason))
 
     @server.tool()
     def dftk_read_case_run(
@@ -619,8 +676,9 @@ def create_server(gateway: DFTKMCPGateway):
         fact_path: str = "",
         value_offset: int = 0,
         value_limit: int = 50,
+        section: Literal['facts', 'meta', 'derived_artifacts'] = 'facts',
     ) -> dict[str, Any]:
-        """Read/page one Observation already persisted by DFTK CaseSession without rerunning the forensic capability."""
+        """Page a persisted Observation without rerunning it. fact_path accepts JSON Pointers (e.g. /browser.chromium_history/visits); section selects facts, meta or derived_artifacts. Page provenance via section=meta, fact_path=/provenance/artifacts. Pixels are never replayed."""
         return _safe("dftk_read_case_run", lambda: gateway.read_case_run(
             case_id, seq,
             evidence_offset=evidence_offset,
@@ -628,6 +686,7 @@ def create_server(gateway: DFTKMCPGateway):
             fact_path=fact_path,
             value_offset=value_offset,
             value_limit=value_limit,
+            section=section,
         ))
 
     return server

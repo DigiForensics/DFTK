@@ -170,6 +170,12 @@ def filesystem_extract(path:str,output_dir:str,partition:int=1,partition_offset:
         return Observation('filesystem.extract',Status.UNSUPPORTED,'Extraction needs pytsk3 for non-FAT filesystems, or a raw offset',errors=[str(e)],meta={'source_sha256':sha256_file(Path(path))})
     finally: fs.close()
     import hashlib
+    destination = Path(info['path']).resolve()
+    try:
+        destination.relative_to(Path(output_dir).resolve())
+    except ValueError:
+        return Observation('filesystem.extract', Status.BLOCKED, 'Extraction name escapes output directory')
+    info['path'] = str(destination)
     Path(info['path']).parent.mkdir(parents=True,exist_ok=True)
     Path(info['path']).write_bytes(data)
     sha=hashlib.sha256(data).hexdigest()
@@ -177,6 +183,6 @@ def filesystem_extract(path:str,output_dir:str,partition:int=1,partition_offset:
     from dftk import __version__ as DFTK_VERSION_lazy  # noqa: lazy import inside fn
     prov=ProvenanceIndex()
     src_art=prov.add(source_artifact='',locator=f"file:{Path(path).name}",tool='filesystem.extract',version=DFTK_VERSION_lazy,sha256=sha256_file(Path(path)),size=Path(path).stat().st_size,kind='evidence',state='LIVE')
-    der=prov.add(source_artifact=src_art.artifact_id,locator=f"partition:{partition};offset:{offset};path:{path_in_fs or '-'}",tool='filesystem.extract',version=DFTK_VERSION_lazy,sha256=sha,size=len(data),kind='derived',state='LIVE',params={'partition':partition,'offset':offset,'length':len(data),'path_in_fs':path_in_fs})
+    der=prov.add(source_artifact=src_art.artifact_id,locator=f"partition:{partition};offset:{offset};path:{path_in_fs or '-'}",tool='filesystem.extract',version=DFTK_VERSION_lazy,sha256=sha,size=len(data),kind='derived',state='LIVE',path=info['path'],params={'partition':partition,'offset':offset,'length':len(data),'path_in_fs':path_in_fs})
     ev=[Evidence(str(path),'extracted_file',info['path'],locator=f"partition:{partition};offset:{offset}",source_sha256=sha256_file(Path(path)),artifact_id=der.artifact_id,derivation=der.derivation.to_dict(),state='LIVE')]
     return Observation('filesystem.extract',Status.OK,f"Extracted {info['size']} byte(s) to workspace",facts={'extracted':info,'sha256':sha},evidence=ev,derived_artifacts=prov.all(),meta={'source_sha256':sha256_file(Path(path)),'provenance':prov.to_dict()})

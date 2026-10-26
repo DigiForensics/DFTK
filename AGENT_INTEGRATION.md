@@ -55,6 +55,11 @@ the installing Python executable with arguments
 
 ## Agent operating loop
 
+The host Agent owns investigation planning and tool scheduling. Direct evidence
+browsing, bounded text reading and specialist operations can be composed without
+the guided first-pass helper. See [media perception](docs/media-perception.md) for
+images/video, explicit visual consent, GPU-first local OCR and CPU opt-in.
+
 After the host exposes DFTK, the Agent follows a small, recoverable tool loop:
 
 1. Call `dftk_doctor` and state the active root, safety, network, and timeout policy.
@@ -111,7 +116,7 @@ output kind such as `tls_sni`. Suggestions return match reasons, parameter/path
 contracts and safety/network eligibility; they do not prove parser support or
 runtime dependency availability. Describe the selected capability before running.
 
-The seventh MCP meta-tool is `dftk_suggest`. Declared input paths resolve under
+The discovery tool is `dftk_suggest`; `dftk_view_media` adds consent-gated native image content. Declared input paths resolve under
 `--root`; output paths resolve under the separate writable `--workspace`.
 ANALYSIS_INPUT can read derived Observation JSON, rules and seals from either root.
 Recipes retain the same server-owned policy in their child calls.

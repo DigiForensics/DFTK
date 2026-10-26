@@ -107,9 +107,11 @@ Sequence hunting: `timeline.hunt_sequences` correlates ordered events by shared
 entity fields, retaining source hashes, locators, and explicit coverage limits.
 See the [sequence hunting guide](docs/sequence-hunting.md) for a runnable example.
 
+Media evidence: [consent-gated image/video previews, GPU-first OCR and derived evidence access](docs/media-perception.md).
+
 ## Project facts
 
-- **One registry, 128 tools** (124 `READ_ONLY`, 4 `STATEFUL`) — **113 primitives** plus **15 recipes**.
+- **One registry, 136 tools** (131 `READ_ONLY`, 5 `STATEFUL`) — **121 primitives** plus **15 recipes**.
 
 
 - Distribution: `dftk`; Python package: `dftk`; CLI: `dftk`.

@@ -56,9 +56,12 @@ class Observation:
     errors: list[str] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
     derived_artifacts: list[DerivedArtifact] = field(default_factory=list)
+    # Transport-only visual content. Never stored in case JSON/audit/briefs.
+    presentation: list[dict[str, Any]] = field(default_factory=list, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
+        data.pop("presentation", None)
         data["status"] = self.status.value
         return data
 

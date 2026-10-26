@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from .models import SafetyLevel
 
@@ -29,6 +29,8 @@ class SafetyPolicy:
     # name-based checks apply.
     evidence_root: Path | None = None
     workspace_root: Path | None = None
+    # Case-recorded outputs only; arbitrary workspace files are not evidence.
+    derived_inputs: dict[str, str] = field(default_factory=dict)
 
     def check(self, *, level: SafetyLevel, network: bool = False) -> None:
         if level > self.max_level:

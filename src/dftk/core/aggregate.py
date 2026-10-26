@@ -20,7 +20,15 @@ def aggregate(tool: str, children: list[Observation], summary: str) -> Observati
     elif any(c.status in (Status.PARTIAL, Status.UNSUPPORTED, Status.BLOCKED) for c in children): status = Status.PARTIAL
     elif any(c.warnings or c.errors for c in children): status = Status.PARTIAL
     else: status = Status.OK
-    facts = {c.tool: c.facts for c in children}
+    facts = {}
+    for child in children:
+        # Stable unique keys preserve repeated searches instead of overwriting.
+        key = child.tool
+        suffix = 2
+        while key in facts:
+            key = f"{child.tool}#{suffix}"
+            suffix += 1
+        facts[key] = child.facts
     evidence = [e for c in children for e in c.evidence]
     warnings = [f"{c.tool}: {w}" for c in children for w in c.warnings]
     errors = [f"{c.tool}: {e}" for c in children for e in c.errors]

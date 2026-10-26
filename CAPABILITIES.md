@@ -1,6 +1,15 @@
-# Capability map — DFTK 3.6.1
+# Capability map — DFTK 3.7.0
 
-The registry contains 128 tools (124 READ_ONLY, 4 STATEFUL) — 113 primitives plus 15 recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
+The registry contains 136 tools (131 READ_ONLY, 5 STATEFUL) — 121 primitives plus 15 recipes. Most capabilities are deliberately narrow so an Agent can compose them according to an evidence requirement.
+
+## Evidence access and media
+
+- `evidence.browse` and `file.read_text` — bounded directory/text access with continuation.
+- `media.inspect` — image/EXIF/video metadata without visual disclosure.
+- `media.preview` — consent-gated still-image crops or timestamped video frames.
+- `media.contact_sheet` — numbered, source-linked thumbnails of up to 16 consented still images.
+- `media.ocr` and `media.ocr_batch` — local GPU-first OCR with source boxes/hashes; batch shares model loading and returns unattempted inputs. CPU requires affirmative user consent.
+- See [perception contracts and limits](docs/media-perception.md).
 
 ## Artifact and filesystem
 
@@ -45,6 +54,7 @@ The registry contains 128 tools (124 READ_ONLY, 4 STATEFUL) — 113 primitives p
 - BIP39 English validation and evidence-tree scanning with checksum verification.
 - Shannon entropy profiling by bounded blocks.
 - hex/Base64/Base64URL/percent decoding candidates.
+- `crypto.openssl_decrypt` (STATEFUL) — one supplied-password attempt with explicit cipher/KDF, a key-source citation, bounded execution and inner-format validation before publishing a derived workspace artifact. No guessing or retry loop.
 
 ## Linux, Docker and web
 

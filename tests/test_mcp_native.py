@@ -104,7 +104,7 @@ def test_mcp_run_ok_reflects_observation_status(tmp_path: Path):
     assert err_result["observation"]["errors"]
 
 
-def test_mcp_tool_surface_is_seven(tmp_path: Path):
+def test_mcp_tool_surface_includes_authorised_media_view(tmp_path: Path):
     # dev extra pins MCP so release CI performs a real in-memory client/server
     # round trip. Minimal/base environments may intentionally omit the extra.
     try:
@@ -130,6 +130,7 @@ def test_mcp_tool_surface_is_seven(tmp_path: Path):
                 "dftk_describe",
                 "dftk_suggest",
                 "dftk_run",
+                "dftk_view_media",
                 "dftk_case",
                 "dftk_read_case_run",
             ]

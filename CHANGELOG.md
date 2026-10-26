@@ -2,6 +2,31 @@
 
 All notable public changes to DFTK are recorded here.
 
+## 3.7.0 — Agent perception and composable evidence access
+
+**136 capabilities across 29 domains**: 131 READ_ONLY, five STATEFUL, and no
+DESTRUCTIVE tools. Eight MCP meta-tools and a matching `v3.7.0` Skill bundle.
+
+- Add consent-gated native MCP images, still-image contact sheets and crops,
+  timestamped video samples, and local GPU-first single/batch OCR. CPU OCR
+  requires affirmative user consent; examination calls never download weights.
+- Add paged directory browsing and bounded text windows. Preserve media,
+  encrypted/unclassified content, analyst dispositions and interrupted attempts
+  in Case memory without replaying pixels from persisted results.
+- Register exact derived workspace paths with hashes so extraction, decryption
+  and later analysis compose under the same Case without weakening source scope.
+- Add one-candidate OpenSSL `enc` decryption with explicit cipher/KDF settings,
+  credential-source references, protected password transport and inner-format
+  validation before publishing plaintext as a derived artifact.
+- Expose archive encryption flags and listing continuation; preserve accessible
+  ZIP members when others require a supplied password or unsupported decoder.
+- Keep repeated Recipe results, add JSON Pointer and provenance paging, improve
+  Chinese discovery, expose dependency readiness and avoid repeated Case views.
+- Strengthen root provenance identity and filesystem extraction containment.
+
+See [release notes](RELEASE_NOTES_3.7.md) and
+[media perception contracts](docs/media-perception.md) for scope and limitations.
+
 ## 3.6.1 — Sequence hunting and coverage gate
 
 **128 capabilities across 28 domains**, with 124 READ_ONLY tools, four STATEFUL

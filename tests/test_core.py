@@ -28,8 +28,8 @@ def test_default_tool_surface_is_read_only_except_explicit_workspace_actions():
     # Explicit workspace-writing operations are intentionally STATEFUL: archive
     # extraction, filesystem extraction, HTTP body extraction (which writes a
     # recovered download to the workspace as a DerivedArtifact), and HTML report
-    # rendering.
-    assert stateful == ['archive.extract_safe', 'case.report_html', 'filesystem.extract',
+    # rendering. Decryption also publishes a validated workspace artifact.
+    assert stateful == ['archive.extract_safe', 'case.report_html', 'crypto.openssl_decrypt', 'filesystem.extract',
                         'network.http_sessions']
     assert destructive == []
 
@@ -59,11 +59,10 @@ def test_capability_manifest_is_complete_and_deterministic():
     assert manifest["schema_version"] == MANIFEST_SCHEMA_VERSION
     assert manifest["tool_count"] == len(manifest["tools"])
     assert manifest["tool_count"] == len(registry.specs())
-    # Exact safety counts are documented in CAPABILITIES.md and enforced by
-    # scripts/check_docs.py; here only the shape has to hold, so registering a
-    # new tool does not turn into a test edit.
+    # Counts must be internally consistent; new workspace writers also require
+    # an explicit update to the safety regression gate above.
     assert sum(manifest["safety_counts"].values()) == manifest["tool_count"]
-    assert manifest["safety_counts"]["STATEFUL"] == 4
+    assert manifest["safety_counts"]["STATEFUL"] == 5
     assert manifest["tools"] == sorted(manifest["tools"], key=lambda tool: tool["name"])
 
 

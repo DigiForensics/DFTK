@@ -34,7 +34,7 @@ Then create a clean virtual environment and install the generated wheel:
 python -m venv clean-env
 # Windows: clean-env\\Scripts\\activate
 # POSIX:   source clean-env/bin/activate
-pip install dist/dftk-3.4.0-py3-none-any.whl
+pip install dist/dftk-3.7.0-py3-none-any.whl
 dftk --version
 dftk list
 ```
@@ -45,13 +45,16 @@ The included `testpypi.yml` workflow is manual (`workflow_dispatch`). Configure 
 
 ## Production PyPI
 
-The included `publish.yml` workflow publishes only for version tags matching `v*` and refuses to publish if a `LICENSE` file is absent.
+The included `publish.yml` workflow publishes only for version tags matching `v*`.
+It checks that the tag matches the runtime version, that the matching Skill tag
+already exists, and that documentation/manifests, tests and the public license
+pass before building and publishing.
 
 Typical release:
 
 ```bash
-git tag v3.4.0
-git push origin v3.4.0
+git tag v3.7.0
+git push origin v3.7.0
 ```
 
 The workflow runs tests, builds both wheel and sdist, validates metadata, then publishes using GitHub OIDC / PyPI Trusted Publishing.
@@ -62,12 +65,13 @@ If the production `pypi` environment has required reviewers, the publish job sto
 
 `dftk skill --install` resolves the Agent skill by cloning `DigiForensics/DFTK-skill` at the tag `v<installed DFTK version>`. A DFTK release without the matching skill tag leaves `dftk skill --install` broken for every user on that version.
 
-For each release, after tagging DFTK:
+For each release, push the matching Skill commit and tag before pushing the DFTK
+release tag. This keeps the companion bundle available as soon as PyPI publishes:
 
 ```bash
 cd ../DFTK-skill
-git tag v3.4.0          # same version as the DFTK release
-git push origin main v3.4.0
+git tag v3.7.0          # same version as the DFTK release
+git push origin main v3.7.0
 ```
 
 Verify from a clean environment that `dftk skill --install` succeeds before announcing the release.

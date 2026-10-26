@@ -89,6 +89,7 @@ def test_mcp_tool_registered():
 
 
 @pytest.mark.parametrize('header,kind,specialist', [
+    (b'Salted__', 'openssl', 'crypto.openssl_decrypt'),
     (b'\x7fELF', 'elf', 'binary.elf_inventory'),
     (b'SQLite format 3\x00', 'sqlite', 'database.sqlite_inventory'),
     (b'regf', 'registry', 'windows.registry_tree'),
