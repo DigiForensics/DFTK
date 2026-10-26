@@ -633,14 +633,17 @@ def create_server(gateway: DFTKMCPGateway):
         """Discover explained candidate capabilities from an evidence path, filename, or kind. Consume uses input hints with root-confined header probes; produce matches declared output kinds without file reads. policy_allowed covers safety/network only; check dependencies and describe the chosen capability before running."""
         return _safe("dftk_suggest", lambda: gateway.suggest(query=query, direction=direction, limit=limit))
 
-    @server.tool()
+    # These tools construct native CallToolResult content and structured JSON
+    # explicitly. Disable SDK schema inference, which can wrap Any in a
+    # required "result" field on Python 3.10 and reject our native response.
+    @server.tool(structured_output=False)
     def dftk_run(name: str, params: dict[str, Any] | None = None, case_id: str | None = None) -> Any:
         """Execute one DFTK capability under server-owned safety/network/root policy; optionally persist it in an existing DFTK case."""
         result = _safe("dftk_run", lambda: gateway.run(name=name, params=params, case_id=case_id,
                                                      include_presentation=name in {'media.preview', 'media.contact_sheet'}))
         return visual_result(result)
 
-    @server.tool()
+    @server.tool(structured_output=False)
     def dftk_view_media(path: str | None = None, user_authorized: bool = False, model_supports_images: bool = False,
                         case_id: str | None = None, start_seconds: float = 0,
                         interval_seconds: float = 5, frame_count: int = 1, max_dimension: int = 1280,

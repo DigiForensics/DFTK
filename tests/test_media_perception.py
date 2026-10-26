@@ -53,6 +53,9 @@ def test_preview_is_native_image_and_pixels_are_not_replayed_from_case(setup):
 
     async def check():
         async with Client(create_server(gateway)) as client:
+            tools = await client.list_tools()
+            native = [tool for tool in tools.tools if tool.name in {'dftk_run', 'dftk_view_media'}]
+            assert len(native) == 2 and all(tool.output_schema is None for tool in native)
             denied = await client.call_tool('dftk_view_media', {'path': image.name})
             assert denied.is_error
             assert all(item.type == 'text' for item in denied.content)
