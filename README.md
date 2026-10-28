@@ -11,7 +11,7 @@ and evaluates conclusions. Analysts can use the same capabilities through the CL
 or Python API.
 
 **Current source version: 3.7.0 · 136 capabilities · 29 domains · 8 MCP meta-tools.**
-The registry contains 121 primitives and 15 recipes: 131 READ_ONLY, five STATEFUL,
+One registry, 136 tools (131 READ_ONLY, 5 STATEFUL): 121 primitives plus 15 recipes,
 and no DESTRUCTIVE tools. [中文说明](README.zh-CN.md)
 
 ## What it can do

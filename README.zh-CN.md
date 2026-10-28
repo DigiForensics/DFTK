@@ -10,8 +10,8 @@ Agent 决定调查方向、选择工具、关联证据并判断结论；分析�
 和 Python API 使用同一套能力。
 
 **当前源码版本：3.7.0 · 136 个能力 · 29 个领域 · 8 个 MCP 入口。**
-其中有 121 个原语、15 个配方，安全分类为 131 个 READ_ONLY、5 个 STATEFUL，
-没有 DESTRUCTIVE 工具。[English](README.md)
+一个注册表，136 个工具（131 个 READ_ONLY、5 个 STATEFUL），包含 121 个原语和
+15 个配方，没有 DESTRUCTIVE 工具。[English](README.md)
 
 ## 目前能做什么
 

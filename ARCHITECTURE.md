@@ -54,10 +54,10 @@ EVIDENCE_INPUT validation accepts exact registered paths after digest checks.
 Arbitrary files under that workspace do not become source evidence automatically.
 Outputs can form further derivations under the same Case.
 
-## Safety and execution
+## Safety model
 
-The registry contains **136 capabilities**: **131 READ_ONLY**, **five STATEFUL**
-and **zero DESTRUCTIVE**. The workspace writers are `archive.extract_safe`,
+131 tools are READ_ONLY (136 registered in total); five are STATEFUL and none
+are DESTRUCTIVE. The workspace writers are `archive.extract_safe`,
 `crypto.openssl_decrypt`, `filesystem.extract`, `network.http_sessions` and
 `case.report_html`. READ_ONLY capability execution may still persist a Case/audit
 record. Network gating is independent of the safety level.
