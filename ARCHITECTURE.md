@@ -1,128 +1,107 @@
 # Architecture
 
-## Public tool boundary
+DFTK 3.7.0 is a capability runtime with CLI, Python and MCP adapters. Its companion
+Skill is investigation guidance. The host Agent owns planning and scheduling;
+DFTK does not contain a general autonomous task graph or a mandatory investigation
+workflow. Native parsing, perception and derived outputs share one result contract.
 
-The registry is the only capability surface intended for an Agent. Each `ToolSpec` declares:
+## Runtime components
 
-- stable tool name and plain-language description;
-- JSON-compatible parameters;
-- safety class and whether network access is required;
-- semantic tags;
-- evidence/fact types the tool produces;
-- optional runtime dependencies;
-- deterministic flag and a coarse cost hint.
+| Component | Responsibility |
+|---|---|
+| `catalog.py`, `primitives/`, `recipes/` | Load bounded operations and optional compositions |
+| `core/registry.py`, `core/models.py` | ToolSpec discovery, argument validation, policy, execution and Observation/Evidence contracts |
+| `core/safety.py`, `core/path_policy.py` | Capability/network policy, declared host-path roles and inherited recipe restrictions |
+| `mcp_server.py`, `mcp_worker.py` | Eight stdio meta-tools, bounded replies, worker deadline and native image transport |
+| `core/case.py` | Per-run persistence, attempts, evidence memory, derived-input registration, findings and context/coverage views |
+| `core/provenance.py`, `core/audit.py` | Derivation relationships and best-effort hash-chained execution records |
+| `core/readiness.py`, `core/external_tools.py`, `doctor.py` | Dependency/toolchain discovery and diagnostics |
+| `profiles/` | Declarative application-artifact detection and row normalization |
 
-This lets an upper layer select tools from evidence requirements instead of script filenames.
+The CLI and public `get_registry()` / `run_tool()` entry points use the same
+registry as MCP. Only MCP supplies its worker isolation and server-owned roots
+automatically. Direct Python/CLI invocations do not inherit that process policy.
 
-```text
-Question / AnswerIntent / EvidenceRequirement
-                  |
-                  v
-          Agent / TaskGraph Runtime
-                  |
-          find by tags / produces
-                  |
-                  v
-             ToolRegistry ----------> SafetyPolicy
-                  |
-       +----------+-----------+------------------+
-       |          |           |                  |
-  artifact/fs  platform   protocol/data     optional expert parsers
-       |          |           |                  |
- file/search   Android     DB / PCAP          E01/TSK
- timeline      Linux       browser/email      Registry/EVTX
- archive       Windows     crypto/encoding    SSH/DNS
-       +----------+-----------+------------------+
-                  |
-                  v
-             Observation
-       facts + evidence + status
-                  |
-                  v
-             EvidenceStore
-```
+## Capability contract
 
-## Evidence contract
+Each ToolSpec declares a name, description, JSON-compatible parameters, safety,
+network requirement, tags, produced types, optional requirements, determinism/cost
+hints and path roles. Declared types/enums/bounds are validated before work.
+Hints aid selection; they are not guarantees of input support, output accuracy or
+cross-environment reproducibility. Static manifests omit machine-specific readiness.
 
-`Evidence` records:
+A primitive performs one operation; a recipe composes operations and aggregates
+results. Repeated child tool names receive unique fact keys instead of overwriting
+each other. Child calls inherit the active parent policy and cannot raise its
+ceiling or replace its roots/derived permissions. Guided Case intake persists
+selected children separately; ordinary Recipe children remain within the aggregate.
 
-- `source` — file/URI/artifact where the observation came from;
-- `locator` — byte offset, DEX string id, SQLite object, MIME part, packet number, registry path, log line or equivalent;
-- `kind` and `value`;
-- `source_sha256` when the source hash is available without extra acquisition work;
-- `confidence` in the range 0..1;
-- `method` and an optional note.
+## Evidence and derivation
 
-The registry propagates a known source SHA-256 from observation metadata into evidence items that do not already carry one. An upper-layer evidence store can therefore construct immutable evidence nodes without scraping terminal output.
+An Observation includes status, summary, facts, evidence, warnings, errors,
+metadata and derived artifacts. Evidence identifies a source, locator, kind/value,
+method, optional confidence/hash and derivation linkage. The registry propagates
+a known source hash only when an item has none; batch media assigns per-source
+hashes explicitly. Empty hashes or missing locators are not invented.
 
-## Audit ledger boundary
+DerivedArtifact nodes can carry concrete output paths. Known root digests
+participate in root identity so equal basenames do not merge distinct acquisitions.
+Historical IDs still load. A derivation DAG records byte relationships and method
+parameters; it is not independent proof of content interpretation or acquisition.
 
-`core/audit.ToolAuditLog` is an optional append-only JSONL side record wired into the single `registry.run` funnel, so every execution path — CLI, recipe, `CaseSession`, MCP worker — is covered by one implementation rather than per-caller logging.
+Case manifests register intact derived files only within the workspace. Subsequent
+EVIDENCE_INPUT validation accepts exact registered paths after digest checks.
+Arbitrary files under that workspace do not become source evidence automatically.
+Outputs can form further derivations under the same Case.
 
-The ledger is outside the evidence contract. It records run provenance (timestamp, tool, caller, parameters, safety level, status, evidence hashes, and errors) and does not produce `Evidence`. Serialization and I/O failures do not change the examination result.
+## Safety and execution
 
-## Safety model
+The registry contains **136 capabilities**: **131 READ_ONLY**, **five STATEFUL**
+and **zero DESTRUCTIVE**. The workspace writers are `archive.extract_safe`,
+`crypto.openssl_decrypt`, `filesystem.extract`, `network.http_sessions` and
+`case.report_html`. READ_ONLY capability execution may still persist a Case/audit
+record. Network gating is independent of the safety level.
 
-`READ_ONLY < STATEFUL < DESTRUCTIVE`.
+Path roles separate evidence, workspace output/input and analysis material. MCP
+uses a source root and an outside writable workspace by default. It does not
+expose DESTRUCTIVE as a launch ceiling or let tool arguments change server policy.
+All of this is an application boundary, not an OS sandbox. [Safety](SAFETY.md)
 
-The default policy allows only `READ_ONLY` and disallows network traffic. Currently:
+MCP capability execution uses a child process with stdout/stderr separated from
+JSON-RPC framing. The parent enforces a worker deadline and records Case failures
+when the worker times out/crashes. Case updates use process/thread locks and
+atomic manifests; the server serializes worker execution. There is no global
+Agent-call deduplication or investigation-wide attempt budget.
 
-- 131 tools are `READ_ONLY` (136 registered in total);
-- five tools are `STATEFUL` because they write derived workspace output while leaving the source evidence unchanged: `archive.extract_safe`, `crypto.openssl_decrypt`, `filesystem.extract`, `network.http_sessions` and `case.report_html`;
-- no registered tool is `DESTRUCTIVE`;
-- network-capable tools are separately gated.
+## Perception transport
 
-Historical scripts that edit target files, stop/start services, rewrite panel state, execute arbitrary shell commands or launch containers remain outside the registry.
+Discovery and metadata do not disclose pixels. Preview/contact-sheet operations
+check host-supplied scoped consent and image-model capability attestations before
+decoding. Local OCR has an independent GPU/CPU execution contract.
 
-## Primitive vs recipe
+Observation `presentation` carries bounded images for transport only and is
+excluded from `to_dict()`. Workers return it separately; the adapter builds a
+native CallToolResult with image blocks plus structured metadata. SDK result-schema
+inference is disabled for these explicitly constructed results, including on
+Python 3.10. Case JSON, exports and result paging do not replay pixels.
 
-A primitive performs one bounded forensic operation. A recipe composes primitives but does not embed challenge answers or target-specific constants.
+Video is requested timestamp sampling, not continuous/audio analysis. OCR retains
+raw text and coordinates; CPU requires affirmative consent and weights are
+provisioned before examination. [Perception contract](docs/media-perception.md)
 
-Examples:
+## Cases, integrity and limits
 
-- `network.capture_protocols` is a primitive;
-- `recipe.network.capture_triage` combines artifact identification, format-appropriate flow inventory and protocol extraction;
-- `recipe.server.deep_offline_triage` combines package, authentication, persistence, Docker, web config/log and optional literal-search observations over an offline root filesystem.
+Case storage is `<workspace>/cases/<id>/`: manifests, numbered Observation JSON,
+attempt records, source/derived inventory and optional findings. A brief restores
+bounded context; coverage combines recorded limits, pending actions, unread items,
+interrupted attempts and stored-result integrity checks. Analyst dispositions are
+assertions, not proof of review. Graph/timeline views are correlation products.
 
-`recipe.artifact.auto_triage` is deterministic and conservative. It provides a baseline; follow-up actions still depend on the question and accumulated observations.
+The audit ledger records registry executions, redacted parameters, result/evidence
+digests and chain links. It is separate from Evidence and does not log arbitrary
+host shell work. Failures in audit I/O do not change the examination result.
+Independent seals/anchors are needed for stronger integrity assurance.
 
-## Optional dependency semantics
-
-A capability that depends on a specialist parser must return `UNSUPPORTED` with an explicit dependency requirement when that parser is absent. It must not silently fall back to low-quality string guessing while retaining the same tool name.
-
-This rule is used for E01/TSK, Windows Registry/EVTX, DKIM/SPF and SSH integrations.
-
-## Promotion rule
-
-A legacy technique becomes a registered primitive only when:
-
-1. case constants are removed or converted to parameters/discovery;
-2. output is structured facts/evidence, not print-only text;
-3. parse/IO failures remain explicit;
-4. safety and network behavior are declared;
-5. bounds exist for potentially large scans;
-6. a regression test covers the promoted behavior.
-
-## Native MCP boundary (3.1)
-
-The MCP server is an adapter, not a new forensic runtime:
-
-```text
-Host Agent
-    |
-    | stdio MCP (8 meta-tools)
-    v
-DFTK MCP adapter
-    |  server-owned root / SafetyPolicy / network gate / timeout
-    v
-ToolRegistry -------- CaseSession (optional persistence)
-    |
-    v
-Observation / Evidence
-```
-
-MCP capability execution is delegated to an isolated worker process. The parent server keeps stdout reserved for JSON-RPC framing and serializes runs so CaseSession's manifest update sequence is not raced by concurrent Agent requests.
-
-The MCP tool schema deliberately omits `allow_network` and safety-escalation arguments. Those are server launch policy. `DESTRUCTIVE` is not an accepted MCP ceiling. Paths passed to capabilities are constrained to the server owner's `--root`. Large model-facing responses are bounded; full large Observations should be persisted in a DFTK case and paged through the case-run reader.
-
-The Agent remains responsible for question decomposition, evidence requirements, hypothesis management, verification and stopping. Those methods live in `DFTK-skill`, not in the capability runtime.
+Tests exercise contract and source-preservation invariants on fixtures. They do
+not certify forensic correctness across every format, host UI, decoder, optional
+engine or real case. [Validation details](docs/agent-reliability.md)

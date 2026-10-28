@@ -1,3 +1,5 @@
+> 历史开发记录：描述当时的诊断与计划，不代表当前实现或安装步骤。当前指南见 [Agent 接入](AGENT_INTEGRATION.md)及[开发指南](docs/development.md)。
+
 # DEV_PLAN: 审计台账（chain-of-custody）失败可观测性
 
 状态：进行中

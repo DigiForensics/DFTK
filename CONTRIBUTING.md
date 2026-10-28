@@ -1,58 +1,37 @@
 # Contributing to DFTK
 
-> 🇨🇳 中文简述：我们更倾向于小而确定的取证原语，而非针对特定题目的答案脚本。新增能力请遵循下方原则，并附带回归测试；发布前请用 `python -m build` 与 `python -m twine check --strict` 校验分发包。
+DFTK favors general, bounded forensic operations with source-linked results.
+The host Agent owns investigation strategy; avoid embedding fixed answers,
+password guesses, target identities or a compulsory investigation sequence.
 
-DFTK favors small, deterministic forensic primitives over challenge-specific answer scripts.
+## Contribution contract
 
-## Principles for a new capability
+- Preserve source evidence and write derived material separately.
+- Declare parameter types/bounds, host-path roles, safety, network behavior,
+  dependencies and produced types before exposing a capability.
+- Return structured Observations with locators, raw values and explicit omissions;
+  partial/failure states must not become negative findings.
+- Preserve useful recovered evidence when another item fails; do not silently
+  substitute an unrelated parser or reclassify a heuristic as direct evidence.
+- Keep native image disclosure and CPU-OCR consent boundaries intact. Do not add
+  examination-time model downloads or automatic password/algorithm search loops.
+- Use meaningful regression fixtures and checks for the behavior being changed.
 
-A new capability should:
+Follow the [development guide](docs/development.md) for a correctly selected Python
+environment, the CI coverage gate, static manifest generation and wheel validation.
+Run `python scripts/check_docs.py` when editing documentation. Update both language
+entry pages and synchronize the companion capability catalog when contracts change.
 
-1. accept generic artifact parameters rather than embedding case constants;
-2. preserve source evidence by default;
-3. distinguish `unsupported`, `error`, `blocked`, and negative findings;
-4. return structured facts and explicit evidence locators;
-5. declare safety level, network behavior, optional requirements, tags and produced evidence types;
-6. include regression tests for both successful parsing and malformed / unsupported input;
-7. avoid silently swallowing parser errors.
+## Review and release
 
-## Development setup
+A change description should state the concrete trigger, resulting behavior,
+validation and material limits. Keep secrets/real evidence out of fixtures and PRs.
+Avoid runtime dependencies unless they materially improve the supported operation;
+optional integrations should remain identifiable and explain their installation gap.
 
-```bash
-git clone https://github.com/DigiForensics/DFTK.git
-cd DFTK
-python -m venv .venv
-python -m pip install -e ".[dev]"
-pytest -q
-```
-
-## Adding a tool
-
-1. Implement the primitive in `src/dftk/primitives/` (or a recipe in `src/dftk/recipes/`).
-2. Register it with the `ToolRegistry` decorator, declaring `name`, `description`, `parameters`, `safety`, `network`, `tags`, `produces`, `requires`, `deterministic`, and `cost_hint`.
-3. Return a single `Observation` with explicit `status`, `facts`, and `evidence`.
-4. Add regression tests under `tests/`.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the public tool boundary, evidence contract, and promotion rules.
-
-## Before opening a release PR
-
-```bash
-pytest -q --cov=dftk --cov-report=term-missing --cov-fail-under=60
-python -m build
-python -m twine check --strict dist/*
-```
-
-CI runs the suite with the same coverage floor (`--cov-fail-under=60`), so a PR that drops coverage below it fails. Raise the floor in `.github/workflows/ci.yml` when the real number moves up durably; do not lower it to make a change pass.
-
-## Pull request expectations
-
-- Keep changes focused and described in the PR body.
-- Add or update tests for behavioral changes.
-- Update `CHANGELOG.md` for user-visible changes.
-- Follow the existing code style (4-space indentation, `from __future__ import annotations`).
-- Be respectful — see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-
-## Reporting security issues
-
-Do **not** open a public issue for vulnerabilities. See [SECURITY.md](SECURITY.md).
+Runtime code/contracts and execution policy live here. Investigation methodology,
+specialist references and templates live in
+[DFTK-skill](https://github.com/DigiForensics/DFTK-skill).
+See [architecture](ARCHITECTURE.md), [safety](SAFETY.md),
+[documentation policy](docs/documentation.md) and [release process](PUBLISHING.md).
+Security reports follow [SECURITY.md](SECURITY.md).

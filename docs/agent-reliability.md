@@ -61,33 +61,54 @@ transaction evidence. Never checkpoint the original evidence to make a parser
 work. Deleted carving remains heuristic; zero candidates cannot prove deletion
 never occurred.
 
+## Perception and continuity
+
+Media discovery retains unreviewed items beyond the first signature-inspection
+window. Metadata, pixel disclosure, OCR and analyst disposition are distinct
+records. Preview/contact-sheet gates precede decoding; persisted Case JSON does
+not replay image pixels. Native MCP transport is tested with an actual client,
+including Python 3.10 result-schema behavior.
+
+Batch OCR shares model initialisation, preserves per-source hashes/outcomes and
+returns unattempted paths on a cooperative budget/backend failure. No GPU failure
+causes an implicit CPU retry. Cooperative limits do not guarantee durable partial
+results if a process is killed during inference.
+
+One supplied OpenSSL candidate can produce a structurally validated derivative;
+that derivative can be inventoried/extracted and parsed under the same Case.
+Root-aware source access checks exact registered paths and hashes, rejecting
+unregistered/altered workspace inputs. Password values are redacted from Case
+run/attempt parameters, including credentials that resemble paths.
+
 ## Executable validation
 
-Run:
+With development requirements installed, run relevant fixture checks:
 
 ```bash
 python -m pytest tests/test_agent_reliability.py tests/test_sqlite_committed_snapshot.py -q
+python -m pytest tests/test_media_perception.py tests/test_perception_workflows.py tests/test_mcp_native.py -q
 python -m pytest -q --cov=dftk --cov-report=term --cov-fail-under=60
 python scripts/check_docs.py
 ```
 
-The focused tests check observable behavior:
-
-| Area | Validation |
+| Area | Observable invariant |
 |---|---|
-| Desktop bootstrap | Launch generated config using the actual interpreter with empty PATH and paths containing spaces |
-| Installation | Reject incomplete/recursive bundles; preserve full Skill tree and rebased references |
-| Intake/search | Report inspection failures, traversal denial, symlink exclusions, bounds, and exact matched-byte hashes |
-| MCP boundaries | Reject out-of-root guided intake and child routes; preserve audit and use timeout worker |
-| Agent protocol | Real stdio initialization, tool discovery, Case creation, guided intake, coverage, and persisted-result paging |
-| Recovery/resume | Retain late failures when highlights fill; detect unreadable/replaced/tampered result artifacts |
-| SQLite values | Compare raw byte-parser values with SQLite engine output, including integer 0/1 and empty BLOB/text |
-| WAL snapshot | Compare reconstruction with an engine-generated committed database; reject uncommitted/corrupt/truncated tails |
-| Source preservation | Compare acquired DB/WAL file sets and bytes before and after Case examination |
+| Bootstrap | Generated configuration uses the actual interpreter, survives an empty PATH and preserves audit/root choices |
+| Installation | Complete main/specialist trees and rebased references; reject overlap, incomplete bundles and symlinks |
+| Discovery/access | Actual inspection successes versus attempts, source/window hashes, limits and traversal exclusions |
+| MCP protocol | Real tool discovery, Case flow, native images/contact sheets and structured results across supported Python versions |
+| Consent/OCR | No pixel decode before attestations, no unapproved CPU start/fallback, per-source boxes and resumable batch outcomes |
+| Derivatives | OCR clue to one-candidate decrypt/extract/query, structural validation, unchanged sources and rejected altered outputs |
+| Case recovery | Retain late failures and interrupted attempts; detect changed/unreadable stored results |
+| SQLite/WAL | Compare stored values/committed reconstruction with engine-generated fixtures; reject invalid/uncommitted tails |
 
-Tests establish these invariants on their fixtures. They do not certify every
-format, every optional parser, real evidence of unknown quality, or a host UI's
-installation/discovery behavior. WorkBuddy/Codex host routing is exercised through
-isolated markers and install plans; real MCP transport is exercised independently
-of those desktop UIs. Test coverage is a regression indicator, not forensic
-accuracy or a claim of industry leadership.
+Mocks exercise dispatch/failure decisions, not actual GPU performance. A synthetic
+real-MPS check during 3.7.0 development recognised two images, used one observed
+candidate to decrypt a ZIP and queried its SQLite member with unchanged source
+hashes. That one fixture is not a benchmark for other hardware, CUDA, difficult
+image quality, malicious input or real-case recall.
+
+CI covers Python 3.10–3.13 with development requirements. Optional oracles/engines
+may be absent and their tests skipped; inspect skip reasons. Host routing is
+tested using isolated markers/configuration, not every real desktop UI. Regression
+coverage is not forensic accuracy, acquisition completeness or an industry ranking.

@@ -1,111 +1,78 @@
-# Deploying DFTK with an external forensic-toolkit bundle
+# External tools, optional libraries and OCR models
 
-Use this guide when DFTK is deployed with a separate archive of forensic tools
-(IDA, Ghidra, jadx, apktool, tshark, …). It explains how to register the extracted
-tools with DFTK without editing the system `PATH` or requiring administrator rights.
+DFTK has three distinct dependency groups: Python extras, external executables
+and local OCR weights. Installing/registering one does not install the others.
+Use a trusted tool distribution and keep its writable installation outside source
+evidence. The full list of discovered tools is returned by `dftk doctor`.
 
-The workflow is the `win-tool-launcher` environment-preparation step folded
-directly into DFTK as `dftk prepare`.
+## Python integrations
 
-## What you need
+Install only the extras the task needs; see [README](README.md#optional-integrations).
+`mcp`, `media`, `ocr`, `windows`, `image`, `ese`, `email`, `ssh` and `yara` select
+different dependencies. `all` includes large OCR and native-binding dependencies;
+it is not a universally portable one-step toolchain installation.
 
-1. Python 3.10+ (no PyPI needed for DFTK core itself).
-2. DFTK installed from the provided link:
-   ```bash
-   pip install "dftk[all]"      # or just: pip install dftk
-   dftk doctor                  # sanity check
-   ```
-3. The forensic-toolkit zip, extracted somewhere writable (e.g. `E:\TOOLKIT`).
-   Drive letter does **not** matter — `dftk prepare` derives the real location.
-
-## Prepare the toolchain
-
-Point DFTK at the extracted directory:
+For offline installation, prepare the wheel and all required dependency wheels on
+an authorised connected machine, transfer the trusted wheelhouse, then install:
 
 ```bash
-dftk prepare E:\TOOLKIT
+python -m pip install --no-index --find-links /opt/wheelhouse "dftk[mcp,media]"
 ```
 
-This:
+Zero mandatory core dependencies does not make an online `pip install` work when
+PyPI is unreachable. Use a local wheel/check-out or an explicit package mirror.
 
-- records the toolkit root and a DFTK-managed shim directory in
-  `~/.dftk/toolchain.json`;
-- generates two-layer launchers in `~/.dftk/bin`:
-  - `<tool>.bat` for real Windows `cmd` / PowerShell;
-  - an extensionless `<tool>` wrapper for the agent Bash;
-- writes `set_path.bat` / `set_path.sh` so the bare tool names also work in a
-  plain terminal session.
+## Register an extracted executable bundle
 
-Verify:
+`dftk prepare` records a trusted toolkit root and can generate launch shims. It
+does not download tools, acquire licences or add adapters for arbitrary commands.
 
 ```bash
+dftk prepare /opt/forensic-tools
+dftk prepare --show
 dftk doctor
 ```
 
-The `external` section now lists each tool as `available: true` with a `source`
-of `DFTK_TOOLS / dftk prepare root` (or `dftk prepare shims`). The `toolchain`
-section shows the recorded `toolkit_root` and `bin_dir`.
+In PowerShell use `dftk prepare 'E:\TOOLKIT'`; POSIX shells require their own
+quoting/path conventions. Configuration defaults to `~/.dftk/toolchain.json`
+(`DFTK_TOOLCHAIN_CONFIG` can override it), and shims to `~/.dftk/bin`.
+Management commands write configuration/launchers; they are not READ_ONLY evidence
+capabilities. Do not point preparation at acquired evidence.
 
-### Call tools by bare name in a terminal (optional)
+| Option | Effect |
+|---|---|
+| `--no-shims` | Record the toolkit root without generating launchers |
+| `--bin-dir DIR` | Choose the generated shim directory |
+| `--rewrite-from OLD_ROOT` | Explicitly rewrite stale roots in trusted `.bat`/`.cmd`/`.ps1` launchers, retaining backups |
+| `--show` | Inspect current configuration |
 
-DFTK itself resolves tools via the config, so no PATH edit is required for
-`dftk run`. If you also want to type `jadx` / `apktool` directly in a terminal
-for the duration of that session, source the helper:
+The resolver checks PATH, per-category `DFTK_*_TOOL_DIRS`, configured toolkit
+locations and managed shims. Search is bounded; tools buried deeper may need a
+category directory or explicit PATH entry. The generated `set_path.sh` / `.bat`
+helpers affect a terminal session only; preparation does not rewrite system PATH.
+Java/other runtime requirements still belong to the external tool's installation.
 
-```text
-Windows:  E:\TOOLKIT\..   (use the printed path)  %USERPROFILE%\.dftk\bin\set_path.bat
-Bash:     . "$HOME/.dftk/bin/set_path.sh"
-```
+When a registered capability declares a missing executable dependency it returns
+UNSUPPORTED with the requirement. Discovery alone does not mean DFTK implements
+that executable's functionality. For example, six `memory.*` operations adapt
+fixed Volatility plugins; discovering IDA does not create an arbitrary IDA command
+interface. OpenSSL decryption uses the resolver, including `DFTK_CRYPTO_TOOL_DIRS`.
 
-This is per-session only — it never modifies your persistent User PATH.
+## Media-specific setup
 
-## How discovery works
+Image operations need Pillow (`media` extra). OCR adds EasyOCR, PyTorch and related
+packages; choose a PyTorch build compatible with the host's CUDA or Apple MPS
+environment. Provision trusted detection/recognition weights before examination
+and set `DFTK_OCR_MODEL_DIR` to that existing directory. The default is
+`~/.EasyOCR/model`. DFTK disables EasyOCR model downloads during examination.
 
-External tools can be located through `PATH`, `DFTK_<DOMAIN>_TOOL_DIRS`, or the
-configuration produced by `dftk prepare`. A tool outside the configured locations
-is unavailable to the corresponding capability.
+GPU-only MPS execution rejects `PYTORCH_ENABLE_MPS_FALLBACK=1`; do not silently
+enable CPU fallback. CPU OCR is selected only after affirmative user consent.
+`doctor` reports the model directory and configuration but does not initialise
+GPU models or prove that the selected weights/languages will run.
 
-`dftk prepare` adds the extracted location to DFTK discovery by:
-
-- writing its configuration under `~/.dftk/`;
-- making DFTK's binary resolver search that config automatically on every call,
-  in addition to PATH and the per-domain env vars.
-
-After preparation, later `dftk` calls can resolve the tools without further
-configuration.
-
-## Options
-
-```bash
-dftk prepare E:\TOOLKIT --bin-dir D:\cases\2026-001\.dftk\bin   # custom shim dir
-dftk prepare E:\TOOLKIT --no-shims                              # only record the root
-dftk prepare E:\TOOLKIT --rewrite-from D:\StaleKit             # fix hardcoded roots in launchers
-dftk prepare --show                                            # print current toolchain config
-```
-
-- `--rewrite-from OLD_ROOT` rewrites a stale absolute path left inside the
-  bundle's launcher scripts to the real toolkit root (mirrors the win-tool-launcher
-  path-fix step). Off by default.
-- `--bin-dir` is useful when you want the shims co-located with a specific case
-  workspace instead of the user home.
-
-## Fallbacks (locked / lab machines)
-
-- **Cannot write User PATH / registry blocked:** not a problem — `dftk prepare`
-  never needs them. Source `set_path.bat` / `set_path.sh` per session if you
-  want bare-name access.
-- **Only a portable JDK available (Ghidra/jadx need 21+):** bundle the JDK under
-  the toolkit and let the tool's own launcher set `JAVA_HOME`; DFTK discovery is
-  unaffected.
-- **PyPI unreachable:** DFTK core has zero mandatory dependencies, so `pip install
-  dftk` with no extras still works. Optional parsers (`[all]`) are best-effort.
-- **Extracted onto exFAT / a USB stick:** prefer `dftk prepare` (config-based,
-  no `+x` bit needed). Avoid relying on `+x` on a non-NTFS volume.
-
-## How it wires into capability gating
-
-A DFTK tool that depends on an external binary declares it via
-`requires=("jadx",)`. At call time, if the binary is absent, `dftk_run` returns
-`unsupported` with an explicit message naming the missing binary. After
-`dftk prepare`, the same tool resolves the binary from the recorded toolkit root
-and runs normally. No code change is needed per deployment.
+Video metadata and frame sampling invoke `ffprobe` / `ffmpeg` through PATH,
+separately from the general toolkit resolver. Install both in the environment
+visible to the MCP process. Supported signatures/decoders remain bounded;
+extension discovery is not a decoding guarantee.
+[Media setup and limits](docs/media-perception.md)

@@ -1,122 +1,102 @@
 # Agent integration
 
-DFTK is the single entry point for an investigation Agent. It supplies the runtime,
-the local MCP server, and the matching `DFTK-skill` bundle. Give an Agent this URL:
+DFTK supplies evidence access, perception, bounded operations and persistent
+results. The host Agent owns investigation objectives, scheduling, hypotheses,
+corroboration and conclusions. The companion Skill teaches those decisions; it
+does not add parsers or a separate autonomous runtime.
+
+## Installation and configuration
+
+Follow [INSTALL_AGENT.md](INSTALL_AGENT.md) for the runtime/Skill bootstrap.
+`dftk agent setup --install-skill` selects the Skill tag matching the installed
+runtime, installs the full resource tree and emits a portable JSON fragment plus
+Codex TOML. It does not edit global host configuration. The generated command
+binds the active Python executable and enables a workspace audit ledger.
+
+The host owner chooses the evidence root, separate workspace, safety ceiling,
+network access and timeout. Default READ_ONLY permits source reads and Case
+persistence; five registered STATEFUL capabilities write derived workspace files.
+An Agent cannot loosen the server policy through a tool argument.
+
+## Eight MCP entry points
+
+| Entry point | Use |
+|---|---|
+| `dftk_doctor` | Inspect runtime dependencies and the active server policy |
+| `dftk_search_capabilities` | Search by evidence need, tags or produced types; Chinese aliases are supported |
+| `dftk_suggest` | Explain candidates from a source name/kind, or find declared outputs with `produce` |
+| `dftk_describe` | Read the exact registered capability contract |
+| `dftk_run` | Execute one capability and optionally persist it in a Case |
+| `dftk_view_media` | Return native image/crop/contact-sheet/video-frame content under scoped consent |
+| `dftk_case` | Manage Case context, inventory, dispositions, coverage and correlation/export views |
+| `dftk_read_case_run` | Page persisted facts/evidence/provenance without executing the parser again |
+
+These are protocol tools. Names such as `database.sqlite_query` or `media.ocr`
+are registry capabilities passed to `dftk_describe` / `dftk_run`, not extra MCP
+tools. [Full MCP contract](docs/mcp.md)
+
+## Compose work around evidence gaps
+
+Create a Case when related operations need persistence; retain the returned ID.
+Browse directories, inspect an artifact, read contextual text or call a specialist
+parser according to the question. `evidence.intake` is useful for a bounded source
+manifest. `guided_intake` optionally persists intake plus a few read-only child
+operations. `next` returns capability hints, not a compulsory task queue.
 
 ```text
-https://github.com/DigiForensics/DFTK
+dftk_case(action="new", name="investigation")
+dftk_run(name="evidence.browse", params={"path":"."}, case_id="CASE_ID")
+dftk_run(name="file.read_text", params={"path":"notes.txt"}, case_id="CASE_ID")
 ```
 
-The Agent must not need a separate `DFTK-skill` repository URL.
+Reuse known contracts and prior observations. Search/describe when selecting an
+unfamiliar capability; do not repeatedly discover a tool whose contract is already
+known. Suggestions expose readiness and policy eligibility separately; neither
+guarantees that a particular input is supported.
 
-## One-command bootstrap
+## Perception and authorisation
 
-Install the runtime with MCP support, then let the Agent prepare a bounded
-integration. The evidence directory is read-only input; the case workspace is a
-different writable directory.
+Discovery/metadata are separate from visual review. Before pixels reach a model,
+confirm image support and user consent for that file/scope. Without either, report
+the media and preserve an unreviewed item. The host supplies the consent/model
+attestations; DFTK cannot inspect chat consent itself.
 
-```bash
-python -m pip install --upgrade "dftk[mcp]"
-dftk agent setup \
-  --root /evidence/2026-001 \
-  --workspace /cases/2026-001 \
-  --install-skill \
-  --config-out /cases/2026-001/dftk-agent-config.json
-```
+`dftk_view_media` accepts a single `path` (optional source-coordinate `crop_box`, or
+timestamped video samples) or `paths` for up to 16 still-image thumbnails. Local
+`media.ocr` / `media.ocr_batch` are independent of model vision. They select
+CUDA/MPS; no GPU or GPU failure requires a user decision before slow CPU execution.
+Batch OCR shares model loading and returns `remaining_paths` when its cooperative
+budget or backend failure stops further inputs. [Media limits](docs/media-perception.md)
 
-`agent setup` creates the case workspace, installs the release-matched Skill into
-the detected Agent Skills location, and writes a reviewable MCP configuration
-artifact. Launch entries use the installing Python interpreter plus `-m dftk`,
-so a desktop host does not need the same shell PATH. Setup also enables a
-workspace audit ledger by default and respects custom `CODEX_HOME` Skill paths.
-Keep that runtime environment available, or rerun setup after moving it.
-It never edits a host's global MCP configuration without the host owner's
-explicit import/approval. This prevents unrelated MCP entries from being replaced.
+## Act on a source-backed lead
 
-Start with a dry run when an Agent needs to explain its actions first:
+Encrypted content is one evidence branch. Preserve readable members and continue
+independent evidence. ZIP extraction accepts one supplied password. OpenSSL
+decryption accepts one candidate plus explicit cipher/KDF/expected-format settings
+and a credential-source reference. Neither generates guesses. Equivalent calls
+are not globally prevented: scheduling and attempt budgets remain with the Agent.
 
-```bash
-dftk agent setup --root /evidence/2026-001 --workspace /cases/2026-001 --dry-run
-```
+Use the same Case for extraction/decryption and follow-up analysis. Exact derived
+workspace paths are registered with digests; evidence-input tools can consume them
+after validation. Arbitrary workspace files or changed outputs do not gain source
+access merely by existing under the workspace.
 
-The JSON artifact includes a portable `mcpServers.dftk` fragment and `codex_toml`.
-Import the appropriate fragment using the MCP host's normal UI or configuration
-workflow, approve the local server, then start a new Agent session. Validate the
-exact launch policy before connecting:
+## Read, recover and report
 
-```bash
-dftk mcp --root /evidence/2026-001 --workspace /cases/2026-001 --check
-```
+- Read `observation.status`, warnings and errors even when `ok` is true; `partial`
+  can contain useful evidence and known omissions. A policy/startup failure may
+  return a top-level status/error without an Observation.
+- Persist large results in a Case. Follow result pointers and pagination rather
+  than rerunning a parser. Case recovery returns metadata, not prior image pixels;
+  further disclosure needs valid in-scope consent.
+- Use `artifacts` to page evidence memory. `note_artifact` records an analyst
+  disposition with a reason; it does not prove that the content was examined.
+- Use `brief` to recover context and `coverage` before negative findings/final
+  reporting. Unread items, interrupted attempts and historical failures remain
+  visible. Review them against the question.
+- Request graph/timeline views when they help a claim. Exported summaries and
+  hash integrity are not proof of attribution or complete acquisition.
 
-For Codex, add the generated `codex_toml` block to its MCP configuration. For any
-JSON-configured MCP host, merge `mcp_json.mcpServers.dftk`; its launch command is
-the installing Python executable with arguments
-`-m dftk mcp --root <root> --workspace <workspace> ...`.
-
-## Agent operating loop
-
-The host Agent owns investigation planning and tool scheduling. Direct evidence
-browsing, bounded text reading and specialist operations can be composed without
-the guided first-pass helper. See [media perception](docs/media-perception.md) for
-images/video, explicit visual consent, GPU-first local OCR and CPU opt-in.
-
-After the host exposes DFTK, the Agent follows a small, recoverable tool loop:
-
-1. Call `dftk_doctor` and state the active root, safety, network, and timeout policy.
-2. Create a case with `dftk_case(action="new")`.
-3. Use `dftk_case(action="guided_intake", path=..., case_id=...)` for the first
-   bounded pass. It uses the same isolated worker, root policy, timeout, and audit
-   settings as ordinary MCP runs, including each selected child. It preserves the intake manifest and child observations separately.
-4. Use `dftk_case(action="next")`, then `dftk_search_capabilities` and
-   `dftk_describe` before every new capability choice.
-5. Run the chosen capability with `dftk_run(..., case_id=...)`. Branch on `ok`; do
-   not turn an `unsupported`, `blocked`, or `error` result into a finding.
-6. Before negative findings or final reporting, call
-   `dftk_case(action="coverage")`. Review run failures, pending analysis, traversal
-   exclusions, sidecar warnings, and result integrity; no recorded limitation is
-   not proof of full acquisition or absence of activity.
-7. Before handing off or recovering context, call `dftk_case(action="brief")` and
-   `dftk_case(action="graph")`. Export only after reviewing the timeline.
-
-Use `dftk_read_case_run` to page a persisted observation rather than rerunning a
-tool merely to recover its output.
-
-## Boundaries the Agent must preserve
-
-- The MCP process owner selects `--root`, `--workspace`, safety, network, timeout,
-  and audit settings. The model cannot loosen them through a tool call.
-- `READ_ONLY` and network-disabled are the default. Raise to `STATEFUL` or add
-  `--allow-network` only with explicit authorization.
-- Add `--audit /cases/2026-001/audit.jsonl` when a chain-of-custody execution log is
-  required.
-- DFTK confines its own MCP parameters, but it cannot restrict unrelated shell or
-  filesystem tools granted to the host Agent. Keep those permissions narrower than
-  the evidence scope.
-
-## Manual skill installation
-
-The bootstrap command is preferred. For an existing host setup, install the matching
-bundle directly:
-
-```bash
-dftk skill --install                 # detects one active host, else ~/.agents/skills
-dftk skill --install --target codex  # explicit target
-dftk skill --install --target all --dry-run
-```
-
-See [docs/mcp.md](docs/mcp.md) for server policy and troubleshooting, and
-[INSTALL_AGENT.md](INSTALL_AGENT.md) for the short instruction intended to be pasted
-into an Agent task.
-
-## Explained suggestions (3.6)
-
-Use `dftk_suggest(query="Bookmarks")` for candidate capabilities from a filename,
-kind or root-confined regular-file header. Use `direction="produce"` with an
-output kind such as `tls_sni`. Suggestions return match reasons, parameter/path
-contracts and safety/network eligibility; they do not prove parser support or
-runtime dependency availability. Describe the selected capability before running.
-
-The discovery tool is `dftk_suggest`; `dftk_view_media` adds consent-gated native image content. Declared input paths resolve under
-`--root`; output paths resolve under the separate writable `--workspace`.
-ANALYSIS_INPUT can read derived Observation JSON, rules and seals from either root.
-Recipes retain the same server-owned policy in their child calls.
+MCP confines DFTK calls; it does not sandbox unrelated shell tools, enforce a
+read-only OS mount, prevent every parser exploit or establish evidence truth.
+See [safety](SAFETY.md) and [reliability evidence](docs/agent-reliability.md).

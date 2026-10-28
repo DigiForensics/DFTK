@@ -1,123 +1,140 @@
 # DFTK — Digital Forensics Toolkit
 
 [![CI](https://github.com/DigiForensics/DFTK/actions/workflows/ci.yml/badge.svg)](https://github.com/DigiForensics/DFTK/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org)
 [![PyPI](https://img.shields.io/pypi/v/dftk.svg)](https://pypi.org/project/dftk/)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-DFTK is a Python toolkit for evidence-preserving digital-forensics operations. It
-provides structured results for files, archives, mobile artifacts, databases,
-captures, browser data, email, host artifacts, and timelines.
+DFTK gives an investigation Agent evidence access, perception, bounded actions
+and source-linked memory. The Agent decides what to examine, connects the evidence
+and evaluates conclusions. Analysts can use the same capabilities through the CLI
+or Python API.
 
-中文说明见 [README.zh-CN.md](README.zh-CN.md).
+**Current source version: 3.7.0 · 136 capabilities · 29 domains · 8 MCP meta-tools.**
+The registry contains 121 primitives and 15 recipes: 131 READ_ONLY, five STATEFUL,
+and no DESTRUCTIVE tools. [中文说明](README.zh-CN.md)
 
-## Install
+## What it can do
 
-```bash
-pip install dftk
-```
+| Need | DFTK supplies |
+|---|---|
+| Find evidence | Paged directory browsing, signatures, hashes, text windows and literal/regex search; intake retains media and inaccessible-content hints |
+| Examine images and video | Metadata/EXIF, consent-gated native images, numbered contact sheets, source-coordinate crops and timestamped video samples |
+| Read image text | Local single/batch OCR, CUDA/MPS first, raw text/boxes/confidence and source hashes; CPU only after affirmative consent |
+| Reach nested evidence | ZIP/TAR inventory and workspace extraction; one-candidate OpenSSL decryption; registered derived files can feed later tools in the same Case |
+| Parse artifacts | SQLite/WAL/recovery, Android, browser, Windows/Linux, PCAP/PCAPNG, email, binary and filesystem evidence; selected external-engine adapters |
+| Retain and verify work | Persisted Observations, paged results, artifact dispositions, interrupted attempts, timelines, entity correlation, findings and audit verification |
 
-Optional integrations:
+See the [capability map](CAPABILITIES.md) for supported operations and limits.
+Recipes and next-action suggestions are optional helpers; they do not define a
+mandatory investigation sequence.
 
-```bash
-pip install "dftk[email]"    # DKIM / SPF / DNS
-pip install "dftk[ssh]"      # read-only SSH inventory
-pip install "dftk[windows]"  # Registry / EVTX parsers
-pip install "dftk[yara]"     # YARA rule scanning
-pip install "dftk[mcp]"      # local MCP server
-pip install "dftk[all]"      # all optional Python integrations
-```
+## Connect an Agent
 
-The core package has no mandatory third-party runtime dependencies. E01 filesystem
-traversal additionally requires `pyewf` / libewf bindings and `pytsk3`.
-
-## Start here
-
-```bash
-# Discover available capabilities
-dftk list
-
-# Build an Agent-ready intake manifest and next-step plan
-dftk run evidence.intake --params '{"path":"/evidence/acquisition"}'
-
-# Inspect one capability before running it
-dftk describe artifact.inspect
-
-# Analyze an artifact
-dftk run artifact.inspect --params '{"path":"sample.apk"}'
-
-# Save related observations in a case
-dftk case --workspace /cases/intake new --name intake
-dftk case --workspace /cases/intake run <case_id> artifact.inspect --params '{"path":"sample.apk"}'
-dftk case --workspace /cases/intake export <case_id> --format md
-```
-
-Each run returns an `Observation` with a status, facts, evidence, warnings, and
-errors. `unsupported`, `error`, and `blocked` describe limitations or failures;
-they are not negative findings.
-
-## Agent and MCP use
-
-For Agent use, the recommended entry point is this **DFTK repository**: give its
-URL to the Agent. It installs DFTK first, then runs a single bounded bootstrap that
-fetches the matching complete [DFTK-skill](https://github.com/DigiForensics/DFTK-skill)
-bundle and emits a reviewable MCP configuration fragment:
+Python 3.10+ is required. Install the runtime in a persistent environment:
 
 ```bash
-dftk agent setup --root /evidence/acquisition --workspace /cases/intake --install-skill
+python -m pip install --upgrade "dftk[mcp]"
+dftk agent setup \
+  --root /evidence/acquisition \
+  --workspace /cases/investigation \
+  --install-skill \
+  --config-out /cases/investigation/dftk-agent-config.json
 ```
 
-See [INSTALL_AGENT.md](INSTALL_AGENT.md) for the paste-ready instruction and
-[AGENT_INTEGRATION.md](AGENT_INTEGRATION.md) for the complete operating loop.
+The evidence directory must already exist. Keep it read-only and put the writable
+workspace outside it. Setup installs the complete, version-matched
+[DFTK-skill bundle](https://github.com/DigiForensics/DFTK-skill), binds the active
+Python interpreter, enables a workspace audit ledger and emits JSON/TOML MCP
+fragments. Import the appropriate fragment in your host and start a new session.
+Setup does not edit the host's global MCP configuration.
 
-DFTK includes a local stdio MCP server. Keep acquired evidence read-only and use a
-separate writable case workspace:
+Choose `--target <host>` if detection is uncertain; `--dry-run` previews the plan.
+Check the server before connecting:
 
 ```bash
-pip install "dftk[mcp]"
-dftk mcp --root /evidence/acquisition --workspace /cases/intake --check
-dftk mcp --root /evidence/acquisition --workspace /cases/intake
+dftk mcp --root /evidence/acquisition --workspace /cases/investigation --check
 ```
 
-The server defaults to `READ_ONLY` with network access disabled. Its launch options
-define the evidence root, safety ceiling, network access, and timeout. See the
-[MCP guide](docs/mcp.md) for configuration and policy details.
+MCP defaults to READ_ONLY, network off and a 180-second worker timeout. Extraction,
+decryption, HTTP body export and HTML reporting require a launch policy allowing
+STATEFUL operations. See [installation](INSTALL_AGENT.md),
+[Agent integration](AGENT_INTEGRATION.md) and [MCP configuration](docs/mcp.md).
 
-For an existing host configuration, install the matching Skill bundle directly:
+## Images, video and OCR
+
+For image previews/contact sheets install `dftk[media]` alongside MCP; for local
+OCR install `dftk[ocr]`. Provision GPU-compatible PyTorch and trusted EasyOCR weights
+separately; set `DFTK_OCR_MODEL_DIR` to the model directory. Video metadata/sampling
+also needs FFmpeg/FFprobe on PATH. Examination calls never download OCR weights.
+
+Pixels reach the host model only when it supports images and the user has granted
+consent for the file/scope. Otherwise report the discovered media without pixels.
+Local OCR is separate from model vision. GPU failure never silently authorises
+slow CPU OCR; explain the cost and obtain affirmative consent before `allow_cpu=true`.
+
+Video support is sampled frames, with at most eight frames per request; audio and
+unsampled content remain unexamined. Thumbnails, crops and empty OCR output do not
+establish full-content review. [Perception contracts](docs/media-perception.md)
+
+## CLI and Python
+
+The core package has no mandatory third-party runtime dependencies:
 
 ```bash
-dftk skill --install  # auto-detect the current Agent host; portable fallback: agents
-# Inspect all supported target paths before a broad installation:
-dftk skill --install --target all --dry-run
+python -m pip install dftk
+dftk suggest /evidence/acquisition/History
+dftk search "图片文字识别"
+dftk describe database.sqlite_query
+dftk run artifact.inspect --params '{"path":"/evidence/acquisition/sample.bin"}'
+dftk case --workspace /cases/investigation new --name investigation
+dftk case --workspace /cases/investigation run CASE_ID artifact.inspect --params '{"path":"/evidence/acquisition/sample.bin"}'
+dftk case --workspace /cases/investigation coverage CASE_ID
 ```
 
-## Documentation
+Replace `CASE_ID` with the ID returned by `case new`. These JSON examples use a
+POSIX shell; use `--params-file` for portable or sensitive parameter input.
+Direct CLI calls do not inherit an MCP server's roots or process timeout.
 
-- [User guide](docs/user-guide.md) — CLI, Python API, cases, observations, and audit logs.
-- [MCP guide](docs/mcp.md) — local server policy and host configuration.
-- [Capability map](CAPABILITIES.md) — domains and capability groups.
-- [Architecture](ARCHITECTURE.md) — registry, evidence contract, and runtime boundaries.
-- [Safety policy](SAFETY.md) — execution levels, network gates, and source-evidence protection.
-- [Toolchain deployment](DEPLOY-TOOLCHAIN.md) — external forensic binaries.
-- [Development guide](docs/development.md) — setup, tests, and contribution workflow.
-- [Agent reliability](docs/agent-reliability.md) — bootstrap, coverage review, SQLite snapshot semantics, and executable validation.
-- [Documentation policy](docs/documentation.md) — ownership, generated data, and translation rules.
+```python
+import dftk
 
-Sequence hunting: `timeline.hunt_sequences` correlates ordered events by shared
-entity fields, retaining source hashes, locators, and explicit coverage limits.
-See the [sequence hunting guide](docs/sequence-hunting.md) for a runnable example.
+result = dftk.run_tool("artifact.inspect", {"path": "/evidence/sample.bin"})
+print(result.to_dict())
+```
 
-Media evidence: [consent-gated image/video previews, GPU-first OCR and derived evidence access](docs/media-perception.md).
+Every capability returns an Observation with status, facts, evidence and limits.
+`partial` requires review; `unsupported`, `blocked` and `error` are not evidence
+that the sought activity is absent. [User guide](docs/user-guide.md)
 
-## Project facts
+## Optional integrations
 
-- **One registry, 136 tools** (131 `READ_ONLY`, 5 `STATEFUL`) — **121 primitives** plus **15 recipes**.
+| Extra | Purpose |
+|---|---|
+| `mcp` | Local stdio MCP server; SDK `>=2.0.0,<3` |
+| `media` / `ocr` | Pillow previews / EasyOCR and its dependencies |
+| `windows` | Optional Registry/EVTX parsers; several host-artifact readers are native |
+| `image` / `ese` | EWF/TSK bindings / SRUM ESE reader; native libraries or build prerequisites may be needed |
+| `email` / `ssh` / `yara` | DKIM/SPF/DNS / fixed SSH collection / YARA scanning |
+| `all` | All optional Python groups, including OCR and native bindings; external binaries and weights are separate |
 
+`dftk doctor` reports readiness and installation gaps. Discovering an external tool
+does not create an adapter for all of its commands. [Toolchain setup](DEPLOY-TOOLCHAIN.md)
 
-- Distribution: `dftk`; Python package: `dftk`; CLI: `dftk`.
-- Python: CPython 3.10+.
-- License: [Apache-2.0](LICENSE).
-- Maintainer: [DyNooob](https://github.com/DyNooob) · [DigiForensics](https://www.digiforensics.cn).
+## Documentation and boundaries
 
-DFTK supports lawful, authorized examination of evidence. It is a technical toolkit,
-not legal advice.
+- [User guide](docs/user-guide.md): discovery, cases, results, Python and audit.
+- [Capability map](CAPABILITIES.md) and [static manifest](docs/capabilities.json).
+- [Architecture](ARCHITECTURE.md), [safety](SAFETY.md) and [security reporting](SECURITY.md).
+- [Sequence hunting](docs/sequence-hunting.md) and [reliability validation](docs/agent-reliability.md).
+- [Development](docs/development.md), [documentation maintenance](docs/documentation.md) and [publishing](PUBLISHING.md).
+- [3.7.0 release notes](RELEASE_NOTES_3.7.md) and [changelog](CHANGELOG.md).
+
+DFTK does not guarantee complete acquisition or real-case evidence recall. Some
+encrypted ZIP methods and RAR/7z extraction remain unsupported. OpenSSL decryption
+requires a supplied candidate and explicit parameters; it does not guess or impose
+a global retry budget on the host Agent. MCP path checks constrain DFTK calls,
+not unrelated tools available to the host. Preserve raw sources and review coverage.
+
+Distribution/import/CLI: `dftk`. Maintainer: [DyNooob](https://github.com/DyNooob)
+at [DigiForensics](https://www.digiforensics.cn). License: [Apache-2.0](LICENSE).

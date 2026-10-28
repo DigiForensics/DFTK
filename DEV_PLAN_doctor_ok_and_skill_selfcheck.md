@@ -1,3 +1,5 @@
+> 历史开发记录：描述当时的诊断与计划，不代表当前实现或安装步骤。当前指南见 [Agent 接入](AGENT_INTEGRATION.md)及[开发指南](docs/development.md)。
+
 # 开发计划：修复 `dftk doctor` 的 `ok` 死常量 + 增加技能安装位置自检
 
 状态：进行中

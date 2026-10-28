@@ -1,51 +1,96 @@
-# Safety policy
+# Safety and evidence boundaries
 
-The default execution policy is evidence-preserving and offline.
+DFTK preserves source evidence by design and defaults to offline READ_ONLY
+capability execution. Keep acquired sources on an OS read-only mount where
+appropriate; application path checks do not enforce a read-only mount themselves.
 
-## Levels
+## Capability levels
 
-- `READ_ONLY` — reads evidence, metadata or immutable / read-only database connections; fixed remote inventory also belongs here but is separately network-gated.
-- `STATEFUL` — writes only to a derived workspace or otherwise changes runtime state without modifying the source evidence.
-- `DESTRUCTIVE` — writes / deletes target evidence, rewrites configuration, stops / starts services, installs software, pulls / runs containers or exposes arbitrary target-shell mutation.
+The 3.7.0 registry contains 136 tools: 131 READ_ONLY, five STATEFUL and zero
+DESTRUCTIVE. READ_ONLY classifies a capability's source-side effects; Case files,
+audit records and runtime bookkeeping can still be written to the workspace.
 
-DFTK registers a 72-tool capability surface: **71 READ_ONLY**, **1 STATEFUL** and **0 DESTRUCTIVE** tools.
+| Level | Meaning |
+|---|---|
+| READ_ONLY | Evidence/metadata parsing, correlation, local perception or fixed remote collection; network and disclosure are separate controls |
+| STATEFUL | Derived workspace outputs while preserving original sources |
+| DESTRUCTIVE | Target/evidence mutation; no such capability is registered and MCP cannot select this ceiling |
 
-The one stateful tool, `archive.extract_safe`, writes to an explicit output directory and is blocked under the default policy. It applies path-traversal, member-count and expanded-size checks and does not modify the source archive.
+The STATEFUL tools are `archive.extract_safe`, `crypto.openssl_decrypt`,
+`filesystem.extract`, `network.http_sessions` and `case.report_html`. Destructive
+scripts, arbitrary target-shell mutation and legacy challenge scripts are outside
+the registry. CLI installation/toolchain setup are management commands with their
+own writes; the capability level is not a global sandbox for the whole program.
 
-## Network isolation
+## Roots and policy
 
-Network-capable tools are disabled unless the caller opts in with `--allow-network`. This prevents an offline run from unexpectedly performing DNS or SSH traffic.
+MCP owns a source `--root` and separate writable `--workspace`. The workspace must
+be outside source evidence by default. `--allow-workspace-in-root` is an explicit
+compatibility exception and permits derived changes inside that tree.
 
-Current network-gated capabilities are DKIM verification, SPF evaluation and fixed-command SSH inventory. SSH does not expose an arbitrary command parameter and rejects unknown host keys.
+Declared path roles distinguish source inputs, workspace outputs/inputs and
+analysis material. Paths are resolved and containment-checked before execution.
+Case-recorded derived files may be source inputs only at exact registered
+workspace paths with matching digests. Directory metadata access does not grant
+content access to every workspace file. Recipe children inherit parent policy.
 
-## Databases
+Direct CLI/Python work does not inherit an MCP process's roots. Python callers
+can supply `SafetyPolicy` roots; unscoped CLI callers must choose paths carefully.
+MCP cannot constrain unrelated shell tools, malicious dependencies, every parser
+exploit, or concurrent external changes to acquired files.
 
-SQLite forensic access uses URI `mode=ro&immutable=1` plus `PRAGMA query_only=ON`. `database.sqlite_query` adds a SQLite authorizer and only accepts a single `SELECT` / `WITH` statement; write / DDL operations are denied by the engine even if a query attempts to hide them behind SQL syntax.
+## Network, media and CPU are separate decisions
 
-## Archives
+Network-declaring capabilities require `--allow-network`: `email.dkim_verify`,
+`email.spf_verify`, `server.readonly_inventory` and `server.remote_snapshot`.
+SSH uses fixed read-only collection profiles, not caller-supplied commands, and
+rejects unknown host keys. Remote reads can still create access/audit effects.
+This declaration gate is not an OS network sandbox; package installation, Skill
+download, external-engine behavior and other host tools have separate controls.
 
-Archive inventory never extracts. Controlled extraction is `STATEFUL` and rejects members that resolve outside the selected output directory. TAR links / special members are not materialized by default.
+Visual disclosure requires scoped user consent and confirmed model image support.
+Both host attestations default false; without them, pixels are not decoded or
+returned by the preview/contact-sheet operation. Discovery/metadata are not visual
+review. Image pixels are transport-only and are not replayed from stored Case JSON.
 
-## Specialist parsers
+Local OCR uses CUDA/MPS first, with provisioned weights and no examination-time
+downloads. CPU execution requires affirmative consent; GPU failure is not consent.
+DFTK rejects enabled implicit MPS CPU fallback for a GPU-only run. These controls
+are attested by the host, not authenticated from chat by DFTK.
+[Media contract](docs/media-perception.md)
 
-When `python-registry`, `python-evtx`, `pyewf`, `pytsk3`, `dkimpy`, `pyspf` or `paramiko` are absent, the matching capability returns `UNSUPPORTED` rather than silently pretending a weaker parser is equivalent.
+## Containers and databases
 
-## Legacy scripts
+ZIP/TAR extraction applies output containment, link/special-member, member-count
+and expanded-size controls. Accessible ZIP members can be retained while others
+need a password or decoder. Password inputs are supplied candidates, not guesses.
+OpenSSL decryption accepts explicit parameters and only registers structurally
+validated expected-format output. Structure checks do not authenticate origin,
+prove correct attribution or prevent a host from making repetitive calls.
 
-The original competition archive is retained only for provenance and knowledge mining. It is not imported by the registry. Historical scripts that contain credentials, target addresses, fixed challenge entities or state-changing commands must not be exposed to an autonomous Agent.
+SQLite SQL readers use immutable/read-only main-database views. Query authorizers
+reject writes; sidecars can contain excluded state. Forensic DB/WAL readers expose
+bounded committed reconstruction and heuristic deleted candidates. Do not modify
+the original database to make a parser accept it. Parser success or zero recovered
+rows does not establish complete transaction/deletion history.
 
-## Audit log
+## Limits, persistence and audit
 
-The optional chain-of-custody ledger (`--audit PATH`, or the `DFTK_AUDIT_LOG` environment variable) is a strictly additive side record. It is append-only, it is written outside the evidence tree at a path the caller chooses, and it never reads or rewrites evidence.
+MCP worker deadlines bound process lifetime and protect protocol framing. Limits
+inside parsers bound specific resources; a batch's cooperative budget is not a
+hard per-image inference deadline. Interrupted runs stay visible in Case attempts.
 
-Ledger writing is failure-tolerant: if a record cannot be serialized or written, the capability result is returned unchanged. Logging does not abort or alter an examination.
+Observations, derived files and audit records can contain sensitive evidence.
+Password parameters are redacted from Case run/attempt records; ledger redaction
+covers known secret keys and selected embedded patterns, not every secret in raw
+evidence or free text. Keep credentials out of reference/description fields.
 
-Parameter values are recorded so a run can be reproduced, with two guards: keys matching a secret vocabulary (`password`, `passwd`, `token`, `secret`, `api_key`, `private_key`, `credential`, `auth`, `authorization`) are replaced with `<redacted>`, and strings longer than 4096 characters are truncated with an explicit omission marker. Treat the ledger as case material: it contains evidence paths and hashes, so it inherits the handling requirements of the case it documents.
+The append-only audit ledger records registry executions and hashes, not all host
+activity. It is best effort: write/serialization failure does not alter the
+examination result. Verify its health and protect an independent seal/anchor when
+integrity assurance is required. Hashes establish byte relationships, not truth,
+lawful acquisition or immunity to wholesale replacement of both data and anchor.
 
-## MCP policy boundary
-
-`dftk mcp` runs locally over stdio. It defaults to `READ_ONLY` with network disabled. The host process owner may launch it with `--max-safety STATEFUL` or `--allow-network`; these controls are not MCP tool arguments, and `DESTRUCTIVE` is not an accepted MCP ceiling.
-
-The server also owns an explicit filesystem `--root`. Path-like capability parameters are checked before execution and must remain inside that root. The MCP workspace must also live beneath the root. This is an Agent integration guard; it does not replace normal examiner authorization or OS-level isolation.
-
-Primitive execution occurs in a child process with a hard timeout. This protects MCP stdio framing from parser stdout/stderr and prevents a stuck parser from indefinitely blocking the server. Case-scoped execution is serialized because the existing `CaseSession` manifest update is intentionally simple and file-based.
+Use Case coverage before negative findings or handoff. `no_recorded_limitations`
+describes recorded execution, not complete acquisition. Report vulnerabilities
+through [SECURITY.md](SECURITY.md).

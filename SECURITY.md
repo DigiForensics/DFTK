@@ -1,47 +1,30 @@
 # Security policy
 
-## Reporting a vulnerability
+## Report a vulnerability
 
-**Please do not report security vulnerabilities through public GitHub issues.**
+Report security vulnerabilities privately to **i@digiforensics.cn**, with subject
+`DFTK security vulnerability — <summary>`. Avoid public issues containing an
+unfixed exploit, real evidence, credentials or personal data.
 
-If you discover a security vulnerability in DFTK, please report it privately to
-the maintainers. We will acknowledge receipt and work with you on a
-coordinated disclosure.
-
-- **Security contact:** i@digiforensics.cn
-- **Subject line:** `DFTK security vulnerability — <short summary>`
-
-Include as much of the following as possible:
-
-- a description of the vulnerability and its impact;
-- steps to reproduce or a proof of concept;
-- affected versions (e.g. `3.2.1`);
-- any suggested mitigation, if known.
-
-You can expect an initial acknowledgement within a few business days. Once the
-issue is confirmed, we will agree on a disclosure timeline that balances user
-safety with responsible publication.
+Include the affected version/commit, operating system, Python/optional dependency
+versions, minimal synthetic reproduction, expected/observed behavior and impact.
+Useful targets include source mutation, path escapes, undeclared network access,
+secret disclosure, unsafe extraction and parser resource exhaustion. Coordinate
+disclosure with the maintainer; no fixed response-time guarantee is offered here.
 
 ## Supported versions
 
-Only the latest published release line receives security fixes.
+Security fixes target the latest maintained release line. The current source line
+is **3.7.x**. Older releases are not promised security backports; use the current
+release/upgrade guidance rather than treating historical release notes as policy.
 
-| Version | Supported |
-|---------|-----------|
-| 3.2.x   | ✅ Yes |
-| < 3.2   | ❌ No |
+## Intended boundary
 
-## Scope notes
+The runtime has READ_ONLY and derived-workspace STATEFUL capabilities; none is
+DESTRUCTIVE. MCP applies declared path roles, safety/network gates and worker
+deadlines. Scoped visual consent and CPU-OCR consent are separate host attestations.
 
-DFTK is a **read-only, evidence-preserving** toolkit by design:
-
-- no registered tool is `DESTRUCTIVE`;
-- network access is gated behind `--allow-network`;
-- SQLite access is read-only (`mode=ro&immutable=1`, `query_only=ON`);
-- archive extraction is `STATEFUL` and rejects path-traversal / oversized members.
-
-Reports about deviations from this model (e.g. a tool that unexpectedly writes
-to or modifies source evidence, or performs network traffic without the
-explicit opt-in) are in scope and prioritized.
-
-For the full safety model, see [SAFETY.md](SAFETY.md).
+DFTK is not an OS sandbox, universal media decoder, malware execution environment
+or credential vault. A read-only source mount and appropriate host permissions
+remain important. External binaries, model weights, Python packages and MCP hosts
+have their own trust boundaries. For the detailed contract see [SAFETY.md](SAFETY.md).
